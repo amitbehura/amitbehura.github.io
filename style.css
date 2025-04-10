@@ -1,0 +1,120 @@
+body{
+  background-color: #F2D6BD;
+  display: grid;
+  grid-template-rows: 10% 80% 10%;
+  height:100vh
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  font-family: "Noto Sans", sans-serif;
+  color: #F25D50;
+  font-size: 0.8em;
+  font-weight: 900;
+}
+
+.amit{
+ padding-left: 5%;
+ text-align: left;
+ display: flex;
+ align-items: center;
+ text-shadow: 0.8px 0.8px 0.8px rgba(0, 0, 0, 0.5);
+}
+
+a {
+  text-decoration: none;
+  color:inherit;
+}
+
+.cvcase {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  font-size: 0.7em;
+  justify-content: flex-end;
+}
+
+.cv {
+  text-align: right;
+  display: flex; 
+  justify-content: center; /* Horizontally center */
+  align-items: center;
+  font-weight: 600;
+}
+
+.case {
+  text-align: right;
+  display: flex; 
+  justify-content: center; /* Horizontally center */
+  align-items: center;
+  font-weight: 600;
+}
+
+.mid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.photo{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+img{
+  width: 17em;
+  height: 17em;
+}
+
+@media (max-width: 768px) {
+  img {
+    width: 10em;
+    height: auto;
+  }
+}
+
+.text{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: "Noto Sans", sans-serif;
+  padding-right: 10%;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .text{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: "Noto Sans", sans-serif;
+    padding-right: 10%;
+    font-size: 0.9em;
+  }
+}
+
+.foot {
+  font-family: "Noto Sans", sans-serif;
+  font-weight: 900;
+  overflow: hidden; /* Hide overflowing text */
+  background-color: #F25D50;
+}
+
+.scrolling-text {
+  width: fit-content; /* Allow the width to adjust to the text content */
+  animation: scrollText 20s linear infinite; /* Adjust duration for desired speed */
+}
+
+.scrolling-text p {
+  display: flex;
+  padding-left: 100%; /* Start text off-screen */
+  white-space: nowrap; /* Keep the text on one line */
+  justify-content: center;
+  align-items: center;
+}
+
+@keyframes scrollText {
+  0% { transform: translateX(100%); } /* Start off-screen */
+  100% { transform: translateX(-100%); } /* End off-screen */
+}
