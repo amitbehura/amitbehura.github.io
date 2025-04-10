@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Grid Website</title>
+  <link rel="stylesheet" href="styles.css"> <!-- Link to your CSS file -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <div class="container">
+    <div class="top-section">
+      <div class="logo">
+        <div class="logo-container" onclick="location.reload()">
+            <img src="logo.png" alt="Logo" class="logo-img" id="logo">
+            <div id="cloud-text" class="cloud-text"></div>
+        </div>
+      </div>
+    </div>
+    <div class="main-section">
+      <div class="left-panel">
+        <div class="profile-block">
+            <img src="profile_picture.png" alt="My Photo" class="profile-img" id="music-image">
+            <p class="profile-caption">“Tap me, and let your ears thank you later.” - Amit</p>
+            <audio id="music-audio" src="come_play.mp3"></audio>
+        </div>
+      </div>
+      <div class="right-panel">
+        <div class="right-content">
+        <div class="right-box">
+            <p class="right-text">Senior Product Manager – IndiaMart</p><br>
+            <p class="right-text">I align stakeholders.<br>
+            I train models.<br>
+            I question everything, including deadlines.</p>
+          </div>
+          <div id="pm-cloud" class="cloud-text"></div>
+          <div class="button-group">
+            <a href="about.html" class="nav-button">About</a>
+            <a href="resume.html" class="nav-button">Resume</a>
+            <a href="https://amitbehura.substack.com/" class="nav-button">Blog</a>
+            <a href="https://github.com/amitbehura" class="nav-button">GitHub</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const image = document.getElementById("music-image");
+    const audio = document.getElementById("music-audio");
+  
+    let isPlaying = false;
+  
+    image.addEventListener("click", () => {
+      if (!isPlaying) {
+        audio.play();
+        image.classList.add("rotate");
+        isPlaying = true;
+      } else {
+        audio.pause();
+        image.classList.remove("rotate");
+        isPlaying = false;
+      }
+    });
+  
+    audio.addEventListener("ended", () => {
+      image.classList.remove("rotate");
+      isPlaying = false;
+    });
+
+    const logo = document.getElementById("logo");
+const cloudText = document.getElementById("cloud-text");
+
+const catWords = [
+  "meow", "purr", "scratch", "whiskers", "nap", "kitten", "furball", "hunter", "claws", "zoomies",
+  "mischief", "tabby", "fluff", "snuggle", "hiss", "paw", "tail", "sleepy", "nibble", "growl",
+  "curl", "softie", "lick", "knead", "leap", "hide", "nuzzle", "catnap", "milk", "playful",
+  "snooze", "prance", "mew", "feline", "slink", "yawn", "blinky", "muffin", "creep", "mystery",
+  "tumble", "zoom", "sprint", "peek", "headbutt", "tiny", "big eyes", "queen", "roar", "scratch post"
+];
+
+logo.addEventListener("mouseenter", () => {
+  const randomWord = catWords[Math.floor(Math.random() * catWords.length)];
+  cloudText.textContent = randomWord;
+  cloudText.style.display = "block";
+  cloudText.style.opacity = "1";
+});
+
+logo.addEventListener("mousemove", (e) => {
+  cloudText.style.left = e.pageX + 15 + "px";
+  cloudText.style.top = e.pageY - 30 + "px";
+});
+
+logo.addEventListener("mouseleave", () => {
+  cloudText.style.opacity = "0";
+  setTimeout(() => {
+    cloudText.style.display = "none";
+  }, 200);
+});
+
+
+const rightBox = document.querySelector(".right-box");
+const pmCloud = document.getElementById("pm-cloud");
+
+const pmBuzzwords = [
+  "circle back", "move fast", "let's sync", "MVP only", "roadmap trauma", "just a quick call", 
+  "ship it", "data-driven", "user pain", "daily standup", "velocity drop", "scrum savior",
+  "out of scope", "UX debt", "align with design", "prioritize this", "edge case", "add a toggle", 
+  "north star", "quick win", "epic owner", "icebox life", "PM = PPT Maker", "user story",
+  "low-hanging fruit", "build vs. buy", "feedback loop", "context switch", "happy path", 
+  "production panic", "scope creep", "needs polish", "5 Whys", "customer is confused", 
+  "blocker alert", "99.9% sure", "async it", "docs or it didn't happen", "no devs available", 
+  "handoff hell", "ship in silence", "1-pager please", "revisit Q3", "AI it", 
+  "what’s the ask", "postmortem soon", "let's test this", "insight pending", 
+  "launch fatigue", "stakeholder ping"
+];
+
+rightBox.addEventListener("mouseenter", () => {
+  const random = pmBuzzwords[Math.floor(Math.random() * pmBuzzwords.length)];
+  pmCloud.textContent = random;
+  pmCloud.style.display = "block";
+  pmCloud.style.opacity = "1";
+});
+
+rightBox.addEventListener("mousemove", (e) => {
+  pmCloud.style.left = e.pageX + 15 + "px";
+  pmCloud.style.top = e.pageY - 30 + "px";
+});
+
+rightBox.addEventListener("mouseleave", () => {
+  pmCloud.style.opacity = "0";
+  setTimeout(() => {
+    pmCloud.style.display = "none";
+  }, 200);
+});
+
+
+  </script>
+
+</body>
+</html>
