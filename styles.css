@@ -8,7 +8,7 @@ html, body {
 }
 
 .container {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -186,6 +186,11 @@ html, body {
 
 
 @media (max-width: 768px) {
+
+  body {
+    padding: 0; /* ✅ REMOVE horizontal padding that causes imbalance */
+  }
+  
   .main-section {
     flex-direction: column;
     height: auto;
@@ -198,10 +203,10 @@ html, body {
   }
 
   .profile-block {
-    width: 70%;
-    padding-top: 10%;
-    padding-right: 0;
+    width: 100%;
+    max-width: 240px;
     margin: 0 auto;
+    padding-top: 0;
     text-align: center;
   }
 
@@ -221,20 +226,78 @@ html, body {
   }
 
   .right-box {
-    width: 70%;
-    margin: 10% auto 0 auto;
+    width: 90%;
+    max-width: 320px;
+    margin: 20px auto 0 auto;
     padding: 20px;
+    box-sizing: border-box;
   }
 
+  .right-panel,
+  .right-content {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    align-items: center;
+  }
+  
   .button-group {
-    flex-wrap: wrap;
-    justify-content: center;
-    margin: 20px auto 0 auto;
+    width: 100%;
+    padding: 0;
+    margin: 30px auto 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 15px;
+    box-sizing: border-box;
   }
 
   .nav-button {
-    width: 45%;
+    width: 90%; /* consistent margin on both sides */
+    max-width: 280px;
+    padding: 10px 20px;
     text-align: center;
+    margin: 0 auto;
+    box-sizing: border-box;
   }
+
+  .top-section {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: auto;
+    padding: 20px 0; /* give breathing space */
+  }
+  
+  .logo-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+  }
+  
+  .logo-img {
+    height: 60px;
+    width: auto;
+    display: block;
+  }
+  
+}
+
+.footer {
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  color: #2f2f2f;
+  margin: 40px 0 20px 0;
+}
+
+.heart {
+  animation: beat 1.2s infinite;
+  display: inline-block;
+}
+
+@keyframes beat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
 }
