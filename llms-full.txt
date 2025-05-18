@@ -1,0 +1,62 @@
+# llms-full.txt for amitbehura.com
+
+## 🏠 Home
+
+Hi, I'm Amit Behura — a Senior Product Manager, tech enthusiast, and lifelong learner. I build digital tools that solve real-world problems. Passionate about data, design, and discipline.
+
+---
+
+## 👤 About Me
+
+I'm currently a Senior Product Manager at IndiaMART, leading initiatives that simplify supplier onboarding and maximize marketplace efficiency.
+
+With an MBA in Operations from XIMB and 3+ years of experience in analytics and product strategy, I focus on creating measurable value for users and businesses.
+
+My interests include:
+- Machine learning
+- Chrome extensions
+- Health & fitness
+- Classic philosophy and literature
+
+---
+
+## 🛠️ Projects
+
+### 1. ResumeIQ
+An AI-powered resume analyzer that gives personalized suggestions and highlights based on job descriptions.
+
+### 2. Mindful Blocker
+A Chrome extension that blocks distractions, gives mindful nudges, and syncs across devices.
+
+### 3. CaloriesML
+An ML-powered model to predict calorie intake from food logs with 95%+ accuracy.
+
+---
+
+## ✍️ Blog
+
+### Why War and Peace is the Greatest Love Story
+A deep dive into Tolstoy’s exploration of love, freedom, and fate.
+
+### Tracking, Awareness, and Behavior Change
+How building my own tools helped me align my daily actions with long-term goals.
+
+### Business Applications of the Confusion Matrix
+A product-centric view on how classification errors affect decision-making.
+
+---
+
+## 📞 Contact
+
+Feel free to reach out via:
+
+- Email: amit[at]example[dot]com
+- GitHub: [github.com/amitbehura](https://github.com/amitbehura)
+- LinkedIn: [linkedin.com/in/amitbehura](https://linkedin.com/in/amitbehura)
+
+---
+
+## 📄 Licenses and Attribution
+
+Unless otherwise noted, all content is © 2025 Amit Behura and may be reused with attribution under CC-BY 4.0.
+
