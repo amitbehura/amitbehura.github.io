@@ -50,6 +50,16 @@
             border-radius: 50%;
             background: white;
             box-shadow: 0 10px 40px rgba(255, 255, 255, 0.2);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .white-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .emoji-orbit {
@@ -383,7 +393,9 @@
     <div class="main-content">
         <div class="circle-container">
             <div class="circle-wrapper">
-                <div class="white-circle"></div>
+                <div class="white-circle">
+                    <img src="https://github.com/amitbehura/amitbehura.github.io/blob/main/profile-photo.jpg?raw=true" alt="Amit Behura">
+                </div>
                 <div class="emoji-orbit">
                     <div class="emoji-moon">
                         <div class="emoji">🚀</div>
