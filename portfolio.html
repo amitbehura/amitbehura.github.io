@@ -857,28 +857,8 @@
         <div class="modal-content">
             <button class="modal-close" onclick="closeModal()">×</button>
             <h3 class="modal-title" id="modalTitle">Project Title</h3>
-            <div class="modal-links">
-                <a href="#" class="modal-link">
-                    <span class="modal-link-icon">📄</span>
-                    <div class="modal-link-text">
-                        <div class="modal-link-title">Read Documentation</div>
-                        <div class="modal-link-desc">View detailed documentation</div>
-                    </div>
-                </a>
-                <a href="#" class="modal-link">
-                    <span class="modal-link-icon">🚀</span>
-                    <div class="modal-link-text">
-                        <div class="modal-link-title">Live Demo</div>
-                        <div class="modal-link-desc">Try the interactive demo</div>
-                    </div>
-                </a>
-                <a href="#" class="modal-link">
-                    <span class="modal-link-icon">💻</span>
-                    <div class="modal-link-text">
-                        <div class="modal-link-title">View Code</div>
-                        <div class="modal-link-desc">Browse the source code</div>
-                    </div>
-                </a>
+            <div class="modal-links" id="modalLinks">
+                <!-- Links will be dynamically inserted here -->
             </div>
         </div>
     </div>
@@ -886,9 +866,49 @@
     <script>
         function openModal(title, docUrl, demoUrl, codeUrl) {
             document.getElementById('modalTitle').textContent = title;
-            document.querySelector('.modal-link:nth-child(1)').href = docUrl || '#';
-            document.querySelector('.modal-link:nth-child(2)').href = demoUrl || '#';
-            document.querySelector('.modal-link:nth-child(3)').href = codeUrl || '#';
+            
+            const modalLinks = document.getElementById('modalLinks');
+            modalLinks.innerHTML = '';
+            
+            // Add Documentation link if URL exists
+            if (docUrl && docUrl !== '#') {
+                modalLinks.innerHTML += `
+                    <a href="${docUrl}" class="modal-link" target="_blank">
+                        <span class="modal-link-icon">📄</span>
+                        <div class="modal-link-text">
+                            <div class="modal-link-title">Read Documentation</div>
+                            <div class="modal-link-desc">View detailed documentation</div>
+                        </div>
+                    </a>
+                `;
+            }
+            
+            // Add Demo link if URL exists
+            if (demoUrl && demoUrl !== '#') {
+                modalLinks.innerHTML += `
+                    <a href="${demoUrl}" class="modal-link" target="_blank">
+                        <span class="modal-link-icon">🚀</span>
+                        <div class="modal-link-text">
+                            <div class="modal-link-title">Live Demo</div>
+                            <div class="modal-link-desc">Try the interactive demo</div>
+                        </div>
+                    </a>
+                `;
+            }
+            
+            // Add Code link if URL exists
+            if (codeUrl && codeUrl !== '#') {
+                modalLinks.innerHTML += `
+                    <a href="${codeUrl}" class="modal-link" target="_blank">
+                        <span class="modal-link-icon">💻</span>
+                        <div class="modal-link-text">
+                            <div class="modal-link-title">View Code</div>
+                            <div class="modal-link-desc">Browse the source code</div>
+                        </div>
+                    </a>
+                `;
+            }
+            
             document.getElementById('articleModal').classList.add('active');
         }
         
@@ -907,9 +927,9 @@
         document.querySelectorAll('.list-item').forEach(item => {
             item.addEventListener('click', function() {
                 const title = this.querySelector('h3').textContent;
-                const docUrl = this.getAttribute('data-doc') || '#';
-                const demoUrl = this.getAttribute('data-demo') || '#';
-                const codeUrl = this.getAttribute('data-code') || '#';
+                const docUrl = this.getAttribute('data-doc') || '';
+                const demoUrl = this.getAttribute('data-demo') || '';
+                const codeUrl = this.getAttribute('data-code') || '';
                 openModal(title, docUrl, demoUrl, codeUrl);
             });
         });
@@ -918,9 +938,9 @@
         document.querySelectorAll('.featured-card').forEach(card => {
             card.addEventListener('click', function() {
                 const title = this.querySelector('h3').textContent;
-                const docUrl = this.getAttribute('data-doc') || '#';
-                const demoUrl = this.getAttribute('data-demo') || '#';
-                const codeUrl = this.getAttribute('data-code') || '#';
+                const docUrl = this.getAttribute('data-doc') || '';
+                const demoUrl = this.getAttribute('data-demo') || '';
+                const codeUrl = this.getAttribute('data-code') || '';
                 openModal(title, docUrl, demoUrl, codeUrl);
             });
         });
