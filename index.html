@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amit Behura</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .main-content {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+        }
+
+        .circle-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 5rem;
+            padding: 0 10%;
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        .circle-wrapper {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+
+        .white-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 10px 40px rgba(255, 255, 255, 0.2);
+        }
+
+        .emoji-orbit {
+            position: absolute;
+            top: -25px;
+            right: -25px;
+        }
+
+        .emoji-moon {
+            width: 50px;
+            height: 50px;
+            background: rgba(102, 126, 234, 0.2);
+            border: 2px solid rgba(102, 126, 234, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .emoji {
+            font-size: 1.5rem;
+            position: absolute;
+        }
+
+        .emoji:nth-child(1) {
+            animation: fadeInOut 6s infinite;
+            animation-delay: 0s;
+        }
+
+        .emoji:nth-child(2) {
+            animation: fadeInOut 6s infinite;
+            animation-delay: 2s;
+        }
+
+        .emoji:nth-child(3) {
+            animation: fadeInOut 6s infinite;
+            animation-delay: 4s;
+        }
+
+        @keyframes fadeInOut {
+            0%, 33% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            34%, 100% {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+        }
+
+        .text-content {
+            max-width: 600px;
+        }
+
+        .text-content h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+        }
+
+        .text-content p {
+            font-size: 1.5rem;
+            color: #a0a0a0;
+            line-height: 1.6;
+        }
+
+        .contact-info {
+            margin-top: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .contact-info a {
+            color: #a0a0a0;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: color 0.3s;
+        }
+
+        .contact-info a:hover {
+            color: #667eea;
+        }
+
+        .social-links {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            padding: 2rem 5%;
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .social-links a {
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 1rem;
+            font-weight: 700;
+            transition: all 0.3s;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb, #4facfe, #667eea);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientMove 3s ease infinite;
+        }
+
+        .social-links a:hover {
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 768px) {
+            .circle-container {
+                flex-direction: column;
+                gap: 3rem;
+            }
+
+            .text-content h1 {
+                font-size: 2rem;
+            }
+
+            .text-content p {
+                font-size: 1.2rem;
+            }
+
+            .social-links {
+                gap: 1.5rem;
+            }
+
+            .social-links a {
+                font-size: 0.9rem;
+            }
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .police-tape {
+            position: fixed;
+            top: 80px;
+            width: 100%;
+            background: repeating-linear-gradient(
+                45deg,
+                #ffcc00,
+                #ffcc00 20px,
+                #000000 20px,
+                #000000 40px
+            );
+            padding: 0.8rem 0;
+            overflow: hidden;
+            z-index: 999;
+            border-top: 2px solid #ffcc00;
+            border-bottom: 2px solid #ffcc00;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .tape-content {
+            display: flex;
+            white-space: nowrap;
+            animation: scrollTape 20s linear infinite;
+        }
+
+        .tape-text {
+            font-weight: 900;
+            font-size: 1.1rem;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            padding: 0 3rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        @keyframes scrollTape {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-50%);
+            }
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb, #4facfe, #667eea);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientMove 3s ease infinite;
+        }
+
+        @keyframes gradientMove {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: opacity 0.3s;
+        }
+
+        .nav-links a:hover {
+            opacity: 0.7;
+        }
+
+        .nav-links a.gradient-link {
+            font-weight: 700;
+            background: linear-gradient(90deg, #ff6b6b, #ff8e53, #ffd93d, #ff6b6b);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientMove 3s ease infinite;
+            border: 2px solid transparent;
+            border-radius: 25px;
+            padding: 0.6rem 1.2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-links a.gradient-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 25px;
+            padding: 2px;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb, #4facfe, #667eea);
+            background-size: 200% 200%;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            animation: gradientMove 3s ease infinite;
+            pointer-events: none;
+        }
+
+        .nav-links a.gradient-link:hover {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem 5%;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+
+            .nav-links {
+                gap: 1rem;
+            }
+
+            .nav-links a {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo">Amit Behura</div>
+        <ul class="nav-links">
+            <li><a href="https://your-resume-link.com" target="_blank">Resume</a></li>
+            <li><a href="https://your-portfolio-link.com" target="_blank" class="gradient-link">Portfolio</a></li>
+            <li><a href="https://your-experiment-link.com" target="_blank">Experiment</a></li>
+        </ul>
+    </nav>
+
+    <div class="police-tape">
+        <div class="tape-content">
+            <span class="tape-text">🚨 Currently Looking for New Opportunity 🚨</span>
+            <span class="tape-text">🚨 Currently Looking for New Opportunity 🚨</span>
+            <span class="tape-text">🚨 Currently Looking for New Opportunity 🚨</span>
+            <span class="tape-text">🚨 Currently Looking for New Opportunity 🚨</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="circle-container">
+            <div class="circle-wrapper">
+                <div class="white-circle"></div>
+                <div class="emoji-orbit">
+                    <div class="emoji-moon">
+                        <div class="emoji">🚀</div>
+                        <div class="emoji">💡</div>
+                        <div class="emoji">✨</div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-content">
+                <h1>Hi! I am Amit.</h1>
+                <p>Senior Product Manager, Data & AI</p>
+                <div class="contact-info">
+                    <a href="mailto:amitbehura.ab@gmail.com">📧 amitbehura.ab@gmail.com</a>
+                    <a href="tel:+917992727917">📱 +91 7992727917</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="social-links">
+        <a href="https://linkedin.com/in/yourusername" target="_blank">LinkedIn</a>
+        <a href="https://github.com/yourusername" target="_blank">GitHub</a>
+        <a href="https://yourname.substack.com" target="_blank">Substack</a>
+    </div>
+</body>
+</html>
