@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Projects - Amit Behura</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --border-color: #e0e0e0;
+            --project-bg: #f5f5f5;
+            --project-placeholder: #cccccc;
+        }
+
+        body.dark-mode {
+            --bg-color: #000000;
+            --text-color: #ffffff;
+            --text-secondary: #999999;
+            --text-tertiary: #666666;
+            --border-color: #333333;
+            --project-bg: #1a1a1a;
+            --project-placeholder: #444444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 40px 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 60px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            letter-spacing: -1px;
+        }
+
+        nav {
+            display: flex;
+            gap: 24px;
+            padding-top: 12px;
+        }
+
+        nav a {
+            font-size: 0.9375rem;
+            color: var(--text-color);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--text-secondary);
+        }
+
+        .dark-mode-toggle {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0;
+            color: var(--text-color);
+            transition: transform 0.3s;
+        }
+
+        .dark-mode-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .page-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .sort-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .sort-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .sort-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .sort-btn {
+            padding: 6px 14px;
+            font-size: 0.8125rem;
+            background-color: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sort-btn:hover {
+            color: var(--text-color);
+            border-color: var(--text-color);
+        }
+
+        .sort-btn.active {
+            background-color: var(--text-color);
+            color: var(--bg-color);
+            border-color: var(--text-color);
+        }
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 40px;
+        }
+
+        .project-card {
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s;
+        }
+
+        .project-card:hover {
+            transform: translateY(-4px);
+        }
+
+        .project-image {
+            width: 100%;
+            height: 200px;
+            background-color: var(--project-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--project-placeholder);
+            font-size: 0.875rem;
+            margin-bottom: 16px;
+        }
+
+        .project-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .project-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .project-title {
+            font-size: 1.125rem;
+            font-weight: 400;
+        }
+
+        .project-year {
+            font-size: 0.8125rem;
+            color: var(--text-tertiary);
+        }
+
+        .project-description {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 40px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9375rem;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--text-color);
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            nav {
+                padding-top: 0;
+            }
+
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 20px;
+            }
+
+            .projects-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            nav {
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+
+            body {
+                padding: 30px 15px;
+            }
+
+            .sort-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Amit Behura</h1>
+            <nav>
+                <a href="portfolio.html">Home</a>
+                <a href="#blogs">Blogs</a>
+                <a href="https://www.linkedin.com/in/amit-behura/" target="_blank">LinkedIn</a>
+                <a href="#instagram">Instagram</a>
+                <a href="#youtube">Youtube</a>
+                <button id="darkModeToggle" class="dark-mode-toggle">●</button>
+            </nav>
+        </header>
+
+        <a href="portfolio.html" class="back-link">← Back to Home</a>
+
+        <div class="page-header">
+            <div class="page-title">All Projects</div>
+            <div class="sort-controls">
+                <span class="sort-label">Sort:</span>
+                <div class="sort-buttons">
+                    <button class="sort-btn active" data-sort="new">Newest First</button>
+                    <button class="sort-btn" data-sort="old">Oldest First</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="projects-grid" id="projectsGrid">
+            <!-- Projects will be inserted here by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const body = document.body;
+        const projectsGrid = document.getElementById('projectsGrid');
+        const sortButtons = document.querySelectorAll('.sort-btn');
+
+        // Check for saved theme preference
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        if (currentTheme === 'dark') {
+            body.classList.add('dark-mode');
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            const theme = body.classList.contains('dark-mode') ? 'dark' : 'light';
+            localStorage.setItem('theme', theme);
+        });
+
+        // Projects data
+        const projects = [
+            {
+                title: "Project One",
+                year: 2024,
+                description: "Description of project one. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Two",
+                year: 2024,
+                description: "Description of project two. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Three",
+                year: 2023,
+                description: "Description of project three. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Four",
+                year: 2023,
+                description: "Description of project four. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Five",
+                year: 2023,
+                description: "Description of project five. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Six",
+                year: 2022,
+                description: "Description of project six. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Seven",
+                year: 2022,
+                description: "Description of project seven. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Eight",
+                year: 2022,
+                description: "Description of project eight. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Nine",
+                year: 2021,
+                description: "Description of project nine. This showcases the main features and technologies used in this project."
+            },
+            {
+                title: "Project Ten",
+                year: 2021,
+                description: "Description of project ten. This showcases the main features and technologies used in this project."
+            }
+        ];
+
+        // Function to render projects
+        function renderProjects(sortedProjects) {
+            projectsGrid.innerHTML = '';
+            sortedProjects.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.className = 'project-card';
+                projectCard.innerHTML = `
+                    <div class="project-image">[Project Image]</div>
+                    <div class="project-meta">
+                        <div class="project-title">${project.title}</div>
+                        <div class="project-year">${project.year}</div>
+                    </div>
+                    <div class="project-description">${project.description}</div>
+                `;
+                projectsGrid.appendChild(projectCard);
+            });
+        }
+
+        // Sort functionality
+        sortButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Update active button
+                sortButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                // Sort projects
+                const sortType = button.dataset.sort;
+                let sortedProjects = [...projects];
+                
+                if (sortType === 'new') {
+                    sortedProjects.sort((a, b) => b.year - a.year);
+                } else {
+                    sortedProjects.sort((a, b) => a.year - b.year);
+                }
+
+                renderProjects(sortedProjects);
+            });
+        });
+
+        // Initial render (newest first)
+        const initialProjects = [...projects].sort((a, b) => b.year - a.year);
+        renderProjects(initialProjects);
+    </script>
+</body>
+</html>
