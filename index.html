@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amit Behura - Portfolio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --border-color: #e0e0e0;
+            --project-bg: #f5f5f5;
+            --project-placeholder: #cccccc;
+        }
+
+        body.dark-mode {
+            --bg-color: #000000;
+            --text-color: #ffffff;
+            --text-secondary: #999999;
+            --text-tertiary: #666666;
+            --border-color: #333333;
+            --project-bg: #1a1a1a;
+            --project-placeholder: #444444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 40px 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 60px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            letter-spacing: -1px;
+        }
+
+        nav {
+            display: flex;
+            gap: 24px;
+            padding-top: 12px;
+        }
+
+        nav a {
+            font-size: 0.9375rem;
+            color: var(--text-color);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--text-secondary);
+        }
+
+        .dark-mode-toggle {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0;
+            color: var(--text-color);
+            transition: transform 0.3s;
+        }
+
+        .dark-mode-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .scroll-popup {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            background-color: var(--text-color);
+            color: var(--bg-color);
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .scroll-popup.show {
+            opacity: 0.7;
+            transform: translateY(0);
+        }
+
+        h2 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .see-all {
+            font-size: 0.875rem;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .see-all:hover {
+            color: var(--text-color);
+        }
+
+        .career-item {
+            margin-bottom: 40px;
+            padding-bottom: 40px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .career-item:last-child {
+            border-bottom: none;
+        }
+
+        .contact-info {
+            margin-bottom: 20px;
+        }
+
+        .contact-info a {
+            color: var(--text-color);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .contact-info a:hover {
+            color: var(--text-secondary);
+        }
+
+        .contact-label {
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
+            margin-bottom: 4px;
+        }
+
+        .contact-value {
+            font-size: 1rem;
+            color: var(--text-color);
+            margin-bottom: 20px;
+        }
+
+        .job-title {
+            font-size: 1.25rem;
+            font-weight: 400;
+            margin-bottom: 8px;
+        }
+
+        .company {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .duration {
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
+        }
+
+        .project-item {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 40px;
+            margin-bottom: 60px;
+            padding-bottom: 60px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .project-item:last-child {
+            border-bottom: none;
+        }
+
+        .project-image {
+            width: 100%;
+            height: 200px;
+            background-color: var(--project-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--project-placeholder);
+            font-size: 0.875rem;
+        }
+
+        .project-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .project-content h3 {
+            font-size: 1.25rem;
+            font-weight: 400;
+            margin-bottom: 12px;
+        }
+
+        .project-content p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            nav {
+                padding-top: 0;
+            }
+
+            .project-item {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .project-image {
+                height: 180px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            nav {
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+
+            body {
+                padding: 30px 15px;
+            }
+
+            .scroll-popup {
+                left: 15px;
+                bottom: 20px;
+                font-size: 0.8125rem;
+                padding: 10px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Amit Behura</h1>
+            <nav>
+                <a href="#projects">Projects</a>
+                <a href="#blogs">Blogs</a>
+                <a href="https://www.linkedin.com/in/amit-behura/" target="_blank">LinkedIn</a>
+                <a href="#instagram">Instagram</a>
+                <a href="#youtube">Youtube</a>
+                <button id="darkModeToggle" class="dark-mode-toggle">●</button>
+            </nav>
+        </header>
+
+        <section id="projects">
+            <h2>
+                <span>Projects</span>
+                <a href="all-projects.html" class="see-all">See all →</a>
+            </h2>
+            
+            <div class="project-item">
+                <div class="project-image">
+                    [Project Image]
+                </div>
+                <div class="project-content">
+                    <h3>Project Title</h3>
+                    <p>Description of the project goes here. You can describe what the project does, technologies used, and key outcomes or features.</p>
+                </div>
+            </div>
+
+            <div class="project-item">
+                <div class="project-image">
+                    [Project Image]
+                </div>
+                <div class="project-content">
+                    <h3>Another Project</h3>
+                    <p>Description of the project goes here. You can describe what the project does, technologies used, and key outcomes or features.</p>
+                </div>
+            </div>
+
+            <div class="project-item">
+                <div class="project-image">
+                    [Project Image]
+                </div>
+                <div class="project-content">
+                    <h3>Third Project</h3>
+                    <p>Description of the project goes here. You can describe what the project does, technologies used, and key outcomes or features.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="career">
+            <h2>Career</h2>
+            
+            <div class="career-item">
+                <div class="job-title">Senior Product Manager</div>
+                <div class="company">IndiaMART</div>
+                <div class="duration">2022 — Present</div>
+            </div>
+
+            <div class="career-item">
+                <div class="job-title">Business Analyst</div>
+                <div class="company">Tata Consultancy Services</div>
+                <div class="duration">2021 — 2022</div>
+            </div>
+        </section>
+
+        <section id="contact">
+            <h2>Contact</h2>
+            
+            <div class="contact-info">
+                <div class="contact-label">Email</div>
+                <div class="contact-value"><a href="mailto:amitbehura.ab@gmail.com">amitbehura.ab@gmail.com</a></div>
+            </div>
+
+            <div class="contact-info">
+                <div class="contact-label">Mobile</div>
+                <div class="contact-value"><a href="tel:+917992727917">+91-7992727917</a></div>
+            </div>
+
+            <div class="contact-info">
+                <div class="contact-label">LinkedIn</div>
+                <div class="contact-value"><a href="https://www.linkedin.com/in/amit-behura/" target="_blank">Amit Behura | LinkedIn</a></div>
+            </div>
+
+            <div class="contact-info">
+                <div class="contact-label">Resume</div>
+                <div class="contact-value"><a href="#" target="_blank">View Resume</a></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="scroll-popup" id="scrollPopup">
+        Resume at bottom ↓
+    </div>
+
+    <script>
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const body = document.body;
+        const scrollPopup = document.getElementById('scrollPopup');
+
+        // Check for saved theme preference or default to light mode
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        if (currentTheme === 'dark') {
+            body.classList.add('dark-mode');
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            
+            // Save theme preference
+            const theme = body.classList.contains('dark-mode') ? 'dark' : 'light';
+            localStorage.setItem('theme', theme);
+        });
+
+        // Show popup when resume is not visible
+        window.addEventListener('scroll', () => {
+            const contactSection = document.getElementById('contact');
+            const rect = contactSection.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight && rect.bottom >= 0;
+            
+            // Show popup if contact section (with resume) is not visible
+            if (!isVisible) {
+                scrollPopup.classList.add('show');
+            } else {
+                scrollPopup.classList.remove('show');
+            }
+        });
+
+        // Check on page load
+        window.addEventListener('load', () => {
+            const contactSection = document.getElementById('contact');
+            const rect = contactSection.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight && rect.bottom >= 0;
+            
+            if (!isVisible) {
+                scrollPopup.classList.add('show');
+            }
+        });
+    </script>
+</body>
+</html>
