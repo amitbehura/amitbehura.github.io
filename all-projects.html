@@ -315,36 +315,40 @@
         // Projects data
         const projects = [
             {
-                title: "Project One",
-                month: "December",
-                year: 2024,
-                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
-                description: "Description...",
-                link: "https://your-link-here.com"
+                title: "ResumeIQ: Boolean Query Builder (For HR) and Resume Rewriter (For Candidate)",
+                month: "May",
+                year: 2025,
+                date: new Date(2025, 05),
+                description: "A Small WebApp to Untangle JDs and Boolean Queries. Built a tool in 3 nights to help recruiters and candidates visualize keywords, match resumes, and generate Boolean strings - not fixing hiring, just making it easier.",
+                link: "https://amitbehura.substack.com/p/built-resumeiq-a-small-webapp-to",
+                image: "ResumeIQ_Header.png"  // Add this line
             },
             {
                 title: "Project One",
                 month: "December",
                 year: 2024,
-                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                date: new Date(2024, 11),
                 description: "Description...",
-                link: "https://your-link-here.com"
+                link: "https://your-link-here.com",
+                image: "project1.png"  // Add this line
             },
             {
                 title: "Project One",
                 month: "December",
                 year: 2024,
-                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                date: new Date(2024, 11),
                 description: "Description...",
-                link: "https://your-link-here.com"
+                link: "https://your-link-here.com",
+                image: "project1.png"  // Add this line
             },
             {
                 title: "Project One",
                 month: "December",
                 year: 2024,
-                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                date: new Date(2024, 11),
                 description: "Description...",
-                link: "https://your-link-here.com"
+                link: "https://your-link-here.com",
+                image: "project1.png"  // Add this line
             }
         ];
 
@@ -356,7 +360,9 @@
                 projectCard.className = 'project-card';
                 projectCard.innerHTML = `
                         <a href="${project.link}" class="project-link">
-                            <div class="project-image">[Project Image]</div>
+                            <div class="project-image">
+                                <img src="${project.image}" alt="${project.title}">
+                            </div>
                             <div class="project-meta">
                                 <div class="project-title">${project.title}</div>
                                 <div class="project-year">${project.month} ${project.year}</div>
