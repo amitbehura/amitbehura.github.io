@@ -213,6 +213,12 @@
             color: var(--text-color);
         }
 
+        .project-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
         @media (max-width: 768px) {
             header {
                 flex-direction: column;
@@ -262,7 +268,7 @@
             <h1>Amit Behura</h1>
             <nav>
                 <a href="index.html">Home</a>
-                <a href="#blogs">Blogs</a>
+                <a href="https://amitbehura.substack.com/">Blogs</a>
                 <a href="https://www.linkedin.com/in/amit-behura/" target="_blank">LinkedIn</a>
                 <a href="#instagram">Instagram</a>
                 <a href="#youtube">Youtube</a>
@@ -310,53 +316,35 @@
         const projects = [
             {
                 title: "Project One",
+                month: "December",
                 year: 2024,
-                description: "Description of project one. This showcases the main features and technologies used in this project."
+                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                description: "Description...",
+                link: "https://your-link-here.com"
             },
             {
-                title: "Project Two",
+                title: "Project One",
+                month: "December",
                 year: 2024,
-                description: "Description of project two. This showcases the main features and technologies used in this project."
+                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                description: "Description...",
+                link: "https://your-link-here.com"
             },
             {
-                title: "Project Three",
-                year: 2023,
-                description: "Description of project three. This showcases the main features and technologies used in this project."
+                title: "Project One",
+                month: "December",
+                year: 2024,
+                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                description: "Description...",
+                link: "https://your-link-here.com"
             },
             {
-                title: "Project Four",
-                year: 2023,
-                description: "Description of project four. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Five",
-                year: 2023,
-                description: "Description of project five. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Six",
-                year: 2022,
-                description: "Description of project six. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Seven",
-                year: 2022,
-                description: "Description of project seven. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Eight",
-                year: 2022,
-                description: "Description of project eight. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Nine",
-                year: 2021,
-                description: "Description of project nine. This showcases the main features and technologies used in this project."
-            },
-            {
-                title: "Project Ten",
-                year: 2021,
-                description: "Description of project ten. This showcases the main features and technologies used in this project."
+                title: "Project One",
+                month: "December",
+                year: 2024,
+                date: new Date(2024, 11), // Month is 0-indexed (11 = December)
+                description: "Description...",
+                link: "https://your-link-here.com"
             }
         ];
 
@@ -367,12 +355,14 @@
                 const projectCard = document.createElement('div');
                 projectCard.className = 'project-card';
                 projectCard.innerHTML = `
-                    <div class="project-image">[Project Image]</div>
-                    <div class="project-meta">
-                        <div class="project-title">${project.title}</div>
-                        <div class="project-year">${project.year}</div>
-                    </div>
-                    <div class="project-description">${project.description}</div>
+                        <a href="${project.link}" class="project-link">
+                            <div class="project-image">[Project Image]</div>
+                            <div class="project-meta">
+                                <div class="project-title">${project.title}</div>
+                                <div class="project-year">${project.month} ${project.year}</div>
+                            </div>
+                            <div class="project-description">${project.description}</div>
+                        </a>
                 `;
                 projectsGrid.appendChild(projectCard);
             });
@@ -390,9 +380,9 @@
                 let sortedProjects = [...projects];
                 
                 if (sortType === 'new') {
-                    sortedProjects.sort((a, b) => b.year - a.year);
+                    sortedProjects.sort((a, b) => b.date - a.date);
                 } else {
-                    sortedProjects.sort((a, b) => a.year - b.year);
+                    sortedProjects.sort((a, b) => a.date - b.date);
                 }
 
                 renderProjects(sortedProjects);
