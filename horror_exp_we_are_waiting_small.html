@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Inquiry</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --text-color: #e0e0e0;
+            --accent-red: #8b0000;
+            --glitch-color: #ff0000;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            user-select: none;
+            transition: background-color 2s, filter 0.1s;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            perspective: 1000px;
+            z-index: 10;
+        }
+
+        #glitch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(255, 0, 0, 0.05),
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+        }
+
+        .question-mark {
+            position: absolute;
+            font-size: 3rem;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.3s;
+            color: rgba(255, 255, 255, 0.6);
+            filter: blur(1px);
+        }
+
+        .horror-symbol {
+            position: absolute;
+            cursor: pointer;
+            color: var(--accent-red);
+            font-weight: bold;
+            text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            z-index: 50;
+            white-space: nowrap;
+        }
+
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 200;
+        }
+
+        #corruption-bar {
+            width: 200px;
+            height: 10px;
+            border: 1px solid #444;
+            background: #111;
+            margin-top: 5px;
+        }
+
+        #corruption-fill {
+            width: 0%;
+            height: 100%;
+            background: var(--accent-red);
+            transition: width 0.3s;
+            box-shadow: 0 0 10px red;
+        }
+
+        #message-display {
+            position: fixed;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 150;
+            color: white;
+            text-shadow: 2px 2px 0 red, -2px -2px 0 black;
+            transform: translateY(-50%);
+        }
+
+        @keyframes jitter {
+            0% { transform: translate(0,0); }
+            20% { transform: translate(-4px, 4px) rotate(-1deg); }
+            40% { transform: translate(4px, -4px) rotate(1deg); }
+            60% { transform: translate(-4px, -4px) rotate(-1deg); }
+            80% { transform: translate(4px, 4px) rotate(1deg); }
+            100% { transform: translate(0,0); }
+        }
+
+        .glitch-text {
+            animation: jitter 0.08s infinite;
+        }
+
+        .shake {
+            animation: jitter 0.03s infinite !important;
+        }
+
+        #start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            background: black;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        button {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background: white;
+            color: black;
+        }
+
+        .word-symbol {
+            font-size: 4rem;
+            opacity: 0.8;
+            letter-spacing: -3px;
+        }
+
+        .invert {
+            filter: invert(1) hue-rotate(180deg);
+        }
+
+        #final-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            transform: translate(-50%, -50%);
+            color: #ff0000;
+            font-size: clamp(2.5rem, 10vw, 7rem);
+            text-align: center;
+            font-weight: bold;
+            text-shadow: 0 0 30px black, 0 0 10px red;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+            padding: 20px;
+            box-sizing: border-box;
+            word-wrap: break-word;
+            line-height: 1.1;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1 class="glitch-text">THE INQUIRY</h1>
+        <p>There are truths better left buried.</p>
+        <button onclick="startGame()">ENTER</button>
+    </div>
+
+    <div id="ui">
+        <div id="label">CURIOSITY</div>
+        <div id="corruption-bar"><div id="corruption-fill"></div></div>
+    </div>
+
+    <div id="message-display" class="message"></div>
+
+    <div id="game-container">
+        <div id="glitch-overlay"></div>
+    </div>
+
+    <div id="final-message" class="glitch-text">WE ARE WAITING FOR YOU!</div>
+
+    <script>
+        const container = document.getElementById('game-container');
+        const corruptionFill = document.getElementById('corruption-fill');
+        const overlay = document.getElementById('glitch-overlay');
+        const messageDisplay = document.getElementById('message-display');
+        const label = document.getElementById('label');
+        const finalMessage = document.getElementById('final-message');
+        const uiElement = document.getElementById('ui');
+        
+        let corruption = 0;
+        let gameActive = false;
+        let spawnRate = 1200;
+        let symbols = ["?", "¿", "？", "⸮"];
+        const horrorSymbols = ["⛧", "👁", "🕇", "💀", "☿", "🜏", "🜓", "🜞", "🜵", "🜶", "🕈", "🩸", "🕸", "⛓", "🕷", "𓂻", "𓀐", "𓀠"];
+        const horrorWords = ["RUN", "IT WATCHES", "LIAR", "NOT SAFE", "BEHIND YOU", "HELP ME", "VOID", "NO ESCAPE", "DIE", "GIVE UP", "I SEE YOU", "TOO LATE", "SUFFER"];
+        
+        let audioCtx;
+        let isEnding = false;
+
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playBeep(freq = 150, type = 'sine', duration = 0.1, volume = 0.1) {
+            if(!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            gameActive = true;
+            initAudio();
+            spawnLoop();
+            ambientNoise();
+        }
+
+        function ambientNoise() {
+            if(!gameActive) return;
+            const freq = corruption < 50 ? (40 + Math.random() * 20) : (20 + Math.random() * 10);
+            playBeep(freq, 'sawtooth', 3, corruption / 400);
+            setTimeout(ambientNoise, 2000 + Math.random() * 3000);
+        }
+
+        function spawnLoop() {
+            if(!gameActive) return;
+            const count = corruption > 85 ? 4 : (corruption > 50 ? 2 : 1);
+            for(let i = 0; i < count; i++) createQuestionMark();
+            setTimeout(spawnLoop, spawnRate);
+        }
+
+        function createQuestionMark() {
+            if(!gameActive) return;
+            const el = document.createElement('div');
+            const isHorror = corruption > 25 && Math.random() > (1 - (corruption/80));
+            const isWord = corruption > 55 && Math.random() > 0.5;
+            
+            el.className = isHorror ? 'horror-symbol' : 'question-mark';
+            
+            if (isWord) {
+                el.innerText = horrorWords[Math.floor(Math.random() * horrorWords.length)];
+                el.classList.add('word-symbol');
+            } else if (isHorror) {
+                el.innerText = horrorSymbols[Math.floor(Math.random() * horrorSymbols.length)];
+            } else {
+                el.innerText = symbols[Math.floor(Math.random() * symbols.length)];
+            }
+            
+            let size = isHorror ? (2 + Math.random() * (corruption/8)) : 3;
+            if (corruption > 90) size *= 1.5;
+
+            el.style.fontSize = size + 'rem';
+            el.style.left = Math.random() * 80 + 'vw';
+            el.style.top = Math.random() * 80 + 'vh';
+            el.style.opacity = Math.random() * 0.7 + 0.3;
+            el.style.transform = `rotate(${(Math.random() * 60 - 30) + (corruption > 60 ? Math.random() * 360 : 0)}deg)`;
+            
+            if (corruption > 20) {
+                el.style.animation = `jitter ${0.12 - (corruption/1200)}s infinite`;
+            }
+
+            el.onclick = () => handleInteraction(el, isHorror || isWord);
+            container.appendChild(el);
+
+            const lifetime = 4000 - (corruption * 38);
+            setTimeout(() => {
+                if (el.parentNode) {
+                    el.style.opacity = '0';
+                    setTimeout(() => el.remove(), 200);
+                }
+            }, Math.max(300, lifetime));
+        }
+
+        function handleInteraction(el, isHorror) {
+            if (!gameActive) return;
+            el.remove();
+            corruption += isHorror ? 5 : 2;
+            if (corruption > 100) corruption = 100;
+            
+            corruptionFill.style.width = corruption + '%';
+            spawnRate = Math.max(80, 1200 - (corruption * 12));
+
+            if (isHorror) {
+                playBeep(30 + Math.random() * 100, 'square', 0.5, 0.25);
+                triggerGlitch(true);
+            } else {
+                playBeep(150 + (corruption * 3), 'sine', 0.1, 0.1);
+            }
+
+            if (corruption > 40 && corruption < 45) {
+                showMessage("STOP IT");
+                label.innerText = "WARNING";
+                label.style.color = "red";
+            } else if (corruption > 70 && corruption < 75) {
+                showMessage("I SEE YOU WATCHING");
+                document.body.style.backgroundColor = "#2a0000";
+                label.innerText = "ERROR 666";
+            } else if (corruption > 90) {
+                document.body.classList.add('shake');
+                label.innerText = "NO WAY OUT";
+                startStorm();
+            }
+
+            if (corruption >= 100 && !isEnding) {
+                isEnding = true;
+                endGame();
+            }
+        }
+
+        let stormInterval;
+        function startStorm() {
+            if (stormInterval) return;
+            stormInterval = setInterval(() => {
+                if (corruption >= 100) { clearInterval(stormInterval); return; }
+                createQuestionMark();
+                if (Math.random() > 0.9) triggerGlitch(true);
+            }, 80);
+        }
+
+        function showMessage(text) {
+            messageDisplay.innerText = text;
+            messageDisplay.style.opacity = '1';
+            messageDisplay.classList.add('glitch-text');
+            setTimeout(() => {
+                messageDisplay.style.opacity = '0';
+                messageDisplay.classList.remove('glitch-text');
+            }, 1200);
+        }
+
+        function triggerGlitch(isHard) {
+            if (!overlay) return;
+            overlay.style.opacity = (corruption / 100).toString();
+            if (isHard || Math.random() > 0.7) {
+                const flash = document.createElement('div');
+                flash.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;z-index:500;background:${Math.random() > 0.5 ? 'white' : 'red'};opacity:0.3;pointer-events:none;`;
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 40);
+                
+                if (corruption > 80 && Math.random() > 0.8) {
+                    document.body.classList.toggle('invert');
+                    setTimeout(() => document.body.classList.remove('invert'), 100);
+                }
+            }
+            if (container) {
+                container.style.transform = `translate(${Math.random() * 30 - 15}px, ${Math.random() * 30 - 15}px)`;
+                setTimeout(() => { container.style.transform = 'none'; }, 30);
+            }
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(stormInterval);
+            
+            if (container) container.innerHTML = "";
+            if (uiElement) uiElement.style.display = 'none';
+            if (messageDisplay) messageDisplay.style.display = 'none';
+            
+            document.body.style.backgroundColor = "black";
+            document.body.classList.remove('shake', 'invert');
+            
+            playBeep(15, 'sawtooth', 5, 0.7);
+            playBeep(20, 'square', 5, 0.5);
+            
+            if (finalMessage) {
+                finalMessage.style.display = 'block';
+            }
+
+            const rainContainer = document.createElement('div');
+            rainContainer.id = 'rain-container';
+            rainContainer.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; z-index:1; pointer-events:none;";
+            document.body.appendChild(rainContainer);
+
+            setInterval(() => {
+                const s = document.createElement('div');
+                const isWord = Math.random() > 0.8;
+                s.innerText = isWord ? horrorWords[Math.floor(Math.random() * horrorWords.length)] : horrorSymbols[Math.floor(Math.random() * horrorSymbols.length)];
+                
+                const size = isWord ? (2 + Math.random() * 4) : (3 + Math.random() * 10);
+                s.style.cssText = `position:absolute; left:${Math.random()*90}vw; top:${Math.random()*90}vh; color:#200; font-size:${size}rem; opacity:0.2; animation: jitter 0.1s infinite;`;
+                rainContainer.appendChild(s);
+                
+                if (rainContainer.children.length > 50) {
+                    rainContainer.children[0].remove();
+                }
+            }, 250);
+        }
+
+        setInterval(() => {
+            if (gameActive && corruption > 40) {
+                if (Math.random() * 100 < (corruption / 3)) triggerGlitch(corruption > 80);
+            }
+        }, 300);
+
+    </script>
+</body>
+</html>
