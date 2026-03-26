@@ -104,13 +104,15 @@
             left: 0;
             width: 100%;
             text-align: center;
-            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            font-size: clamp(1.2rem, 4vw, 2.2rem);
             pointer-events: none;
             opacity: 0;
             z-index: 150;
             color: white;
             text-shadow: 2px 2px 0 red, -2px -2px 0 black;
             transform: translateY(-50%);
+            padding: 0 20px;
+            box-sizing: border-box;
         }
 
         @keyframes jitter {
@@ -161,9 +163,9 @@
         }
 
         .word-symbol {
-            font-size: 4rem;
+            font-size: 3.5rem;
             opacity: 0.8;
-            letter-spacing: -3px;
+            letter-spacing: -2px;
         }
 
         .invert {
@@ -173,21 +175,23 @@
         #final-message {
             position: fixed;
             top: 50%;
-            left: 50%;
+            left: 0;
             width: 100%;
-            transform: translate(-50%, -50%);
+            transform: translateY(-50%);
             color: #ff0000;
-            font-size: clamp(2.5rem, 10vw, 7rem);
+            /* Using a more conservative clamp to avoid cutoff */
+            font-size: clamp(2rem, 7vw, 5rem);
             text-align: center;
             font-weight: bold;
             text-shadow: 0 0 30px black, 0 0 10px red;
             z-index: 9999;
             pointer-events: none;
             display: none;
-            padding: 20px;
+            padding: 0 5%;
             box-sizing: border-box;
             word-wrap: break-word;
-            line-height: 1.1;
+            white-space: normal; /* Ensure text wraps to next line if screen is too narrow */
+            line-height: 1.2;
         }
     </style>
 </head>
@@ -252,7 +256,8 @@
         }
 
         function startGame() {
-            document.getElementById('start-screen').style.display = 'none';
+            const startScreen = document.getElementById('start-screen');
+            if (startScreen) startScreen.style.display = 'none';
             gameActive = true;
             initAudio();
             spawnLoop();
@@ -274,7 +279,7 @@
         }
 
         function createQuestionMark() {
-            if(!gameActive) return;
+            if(!gameActive || !container) return;
             const el = document.createElement('div');
             const isHorror = corruption > 25 && Math.random() > (1 - (corruption/80));
             const isWord = corruption > 55 && Math.random() > 0.5;
@@ -290,12 +295,12 @@
                 el.innerText = symbols[Math.floor(Math.random() * symbols.length)];
             }
             
-            let size = isHorror ? (2 + Math.random() * (corruption/8)) : 3;
-            if (corruption > 90) size *= 1.5;
+            let size = isHorror ? (1.5 + Math.random() * (corruption/10)) : 3;
+            if (corruption > 90) size *= 1.3;
 
             el.style.fontSize = size + 'rem';
-            el.style.left = Math.random() * 80 + 'vw';
-            el.style.top = Math.random() * 80 + 'vh';
+            el.style.left = Math.random() * 75 + 'vw'; // Keeping safe margins
+            el.style.top = Math.random() * 75 + 'vh';
             el.style.opacity = Math.random() * 0.7 + 0.3;
             el.style.transform = `rotate(${(Math.random() * 60 - 30) + (corruption > 60 ? Math.random() * 360 : 0)}deg)`;
             
@@ -321,7 +326,7 @@
             corruption += isHorror ? 5 : 2;
             if (corruption > 100) corruption = 100;
             
-            corruptionFill.style.width = corruption + '%';
+            if (corruptionFill) corruptionFill.style.width = corruption + '%';
             spawnRate = Math.max(80, 1200 - (corruption * 12));
 
             if (isHorror) {
@@ -333,15 +338,17 @@
 
             if (corruption > 40 && corruption < 45) {
                 showMessage("STOP IT");
-                label.innerText = "WARNING";
-                label.style.color = "red";
+                if (label) {
+                    label.innerText = "WARNING";
+                    label.style.color = "red";
+                }
             } else if (corruption > 70 && corruption < 75) {
                 showMessage("I SEE YOU WATCHING");
                 document.body.style.backgroundColor = "#2a0000";
-                label.innerText = "ERROR 666";
+                if (label) label.innerText = "ERROR 666";
             } else if (corruption > 90) {
                 document.body.classList.add('shake');
-                label.innerText = "NO WAY OUT";
+                if (label) label.innerText = "NO WAY OUT";
                 startStorm();
             }
 
@@ -362,6 +369,7 @@
         }
 
         function showMessage(text) {
+            if (!messageDisplay) return;
             messageDisplay.innerText = text;
             messageDisplay.style.opacity = '1';
             messageDisplay.classList.add('glitch-text');
@@ -372,8 +380,7 @@
         }
 
         function triggerGlitch(isHard) {
-            if (!overlay) return;
-            overlay.style.opacity = (corruption / 100).toString();
+            if (overlay) overlay.style.opacity = (corruption / 100).toString();
             if (isHard || Math.random() > 0.7) {
                 const flash = document.createElement('div');
                 flash.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;z-index:500;background:${Math.random() > 0.5 ? 'white' : 'red'};opacity:0.3;pointer-events:none;`;
@@ -393,7 +400,7 @@
 
         function endGame() {
             gameActive = false;
-            clearInterval(stormInterval);
+            if (stormInterval) clearInterval(stormInterval);
             
             if (container) container.innerHTML = "";
             if (uiElement) uiElement.style.display = 'none';
@@ -419,14 +426,14 @@
                 const isWord = Math.random() > 0.8;
                 s.innerText = isWord ? horrorWords[Math.floor(Math.random() * horrorWords.length)] : horrorSymbols[Math.floor(Math.random() * horrorSymbols.length)];
                 
-                const size = isWord ? (2 + Math.random() * 4) : (3 + Math.random() * 10);
-                s.style.cssText = `position:absolute; left:${Math.random()*90}vw; top:${Math.random()*90}vh; color:#200; font-size:${size}rem; opacity:0.2; animation: jitter 0.1s infinite;`;
+                const size = isWord ? (1.5 + Math.random() * 3) : (2 + Math.random() * 8);
+                s.style.cssText = `position:absolute; left:${Math.random()*85}vw; top:${Math.random()*85}vh; color:#200; font-size:${size}rem; opacity:0.15; animation: jitter 0.1s infinite;`;
                 rainContainer.appendChild(s);
                 
-                if (rainContainer.children.length > 50) {
+                if (rainContainer.children.length > 40) {
                     rainContainer.children[0].remove();
                 }
-            }, 250);
+            }, 300);
         }
 
         setInterval(() => {
