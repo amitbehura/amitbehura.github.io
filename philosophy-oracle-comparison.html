@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Philosophy Oracle — Model Comparison</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f6;
+    --surface: #ffffff;
+    --border: #e8e4dc;
+    --text-primary: #1a1814;
+    --text-secondary: #6b6560;
+    --oracle-bg: #f7f4ee;
+    --oracle-accent: #8b6914;
+    --oracle-border: #d4b86a;
+    --base-bg: #f5f5f5;
+    --base-accent: #888;
+    --base-border: #ccc;
+    --tag-oracle: #fef3cd;
+    --tag-base: #f0f0f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    line-height: 1.75;
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 48px 24px 40px;
+    text-align: center;
+    background: var(--surface);
+  }
+
+  header .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--oracle-accent);
+    margin-bottom: 16px;
+  }
+
+  header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 400;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+
+  header h1 em {
+    font-style: italic;
+    color: var(--oracle-accent);
+  }
+
+  header p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    max-width: 520px;
+    margin: 0 auto 20px;
+  }
+
+  header .meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  header .meta a {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--oracle-accent);
+    text-decoration: none;
+    border-bottom: 1px solid var(--oracle-border);
+    padding-bottom: 1px;
+  }
+
+  header .meta a:hover { opacity: 0.7; }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    padding: 20px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .legend-dot.oracle { background: var(--oracle-accent); }
+  .legend-dot.base { background: var(--base-accent); }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  .question-block {
+    margin-bottom: 48px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .question-header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .q-number {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+
+  .question-text {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--text-primary);
+  }
+
+  .responses {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 680px) {
+    .responses { grid-template-columns: 1fr; }
+  }
+
+  .response {
+    padding: 24px 28px;
+  }
+
+  .response.oracle {
+    background: var(--oracle-bg);
+    border-right: 1px solid var(--border);
+  }
+
+  .response.base {
+    background: var(--base-bg);
+  }
+
+  @media (max-width: 680px) {
+    .response.oracle { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  .response-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .response-label .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .response-label .dot.oracle { background: var(--oracle-accent); }
+  .response-label .dot.base { background: var(--base-accent); }
+
+  .response-label span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .response-label .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  .response-label .tag.oracle {
+    background: var(--tag-oracle);
+    color: var(--oracle-accent);
+  }
+
+  .response-label .tag.base {
+    background: var(--tag-base);
+    color: var(--base-accent);
+  }
+
+  .response-text {
+    font-size: 14.5px;
+    line-height: 1.8;
+    color: var(--text-primary);
+  }
+
+ .response.oracle .response-text {
+    color: #2a2218;
+}
+  .response.base .response-text {
+    color: #444;
+  }
+
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  footer a {
+    color: var(--oracle-accent);
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Model Comparison · SmolLM2 360M</div>
+  <h1>Philosophy Oracle <em>vs</em> Base Model</h1>
+  <p>Fine-tuned on 34 philosophy and literature classics using QLoRA. 2,000+ synthetic Q&A pairs. Trained on a single laptop GPU.</p>
+  <div class="meta">
+    <a href="https://huggingface.co/amitbehura/philosophy-oracle-smollm2-360m" target="_blank">HuggingFace Model ↗</a>
+    <a href="https://amitbehura.github.io" target="_blank">amitbehura.github.io ↗</a>
+  </div>
+</header>
+
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot oracle"></div>
+    <span>Philosophy Oracle — Fine-tuned SmolLM2 360M</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot base"></div>
+    <span>Base SmolLM2 360M (no fine-tuning)</span>
+  </div>
+</div>
+
+<main>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q01</div>
+      <div class="question-text">What is the self, and does it persist through time?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">The self is the consciousness that experiences and perceives itself from within, and that persists through time from one moment to the next. The self is the subject that is aware of itself, that is in the present, and that has the ability to reflect on its own nature and modify its own nature.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">Based on my training data, I believe that the self refers to a person's conscious experience, thoughts, memories, and emotions. It encompasses their identity, self-awareness, and sense of who they are, as well as their physical presence, behavior, and actions.
+
+The self is a dynamic and ever-changing entity that exists across time. It is shaped by the person's experiences, memories, and interactions with the world. As a result, the self is subject to continuous evolution, growth, and change.
+
+In my training data, I have encountered various cases of self-reference, such as:
+
+1. Self-reference in statements and queries: "I am asking for the current self" or "My current self is a person."
+2. Self-reference in data: "I am a person" or "My current self is a person."
+3. Self-reference in personal pronouns: "I am me" or "My current self is me."
+4. Self-reference in stories and narratives: "I am the story" or "My current self is the story."
+
+However, these self-referential constructions are not always valid. For instance, I am not the self, and my current self is not me. These constructions often lead to the problem of self-reference, where the self is not clear or fixed.
+
+To accurately model the self in my training data, I use a combination of semantic and syntactic features. These features include:
+
+1. Semantic features: I use word embeddings, such as WordPiece and WordVectors, to represent words and their meanings.
+2. Syntactic features: I use a set of rules and patterns to represent the structure of sentences and the relationships between words.
+3. Semantic semantics: I use semantic associations between words and their meanings to represent the meaning of sentences.
+
+My training data also includes various linguistic and non-linguistic features, such as:
+
+1. Fictional sentence patterns: I recognize patterns of fictional language, such as dialogue and internal monologues.
+2. Nonsense language: I recognize language that is not intended to be understood, such as "I am asking for the current self."
+3. Hypothetical language: I recognize language that is not intended to be understood, such as "I am a person."
+
+My training data also includes various examples of self-reference, such as:
+
+1. Sentences with self-reference: Sentences like "I am a person" or "My current self is a person."
+2. Queries with self-reference: Sentences like "What is the current self?" or "What is the self?"
+
+By incorporating these features and constructs, my training data enables me to accurately model the self in various forms of communication, including language, texts, and narratives.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q02</div>
+      <div class="question-text">Is it ever right to do evil so that good may come?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">Yes, it is sometimes right to do evil so that good may come. This is the question of whether the moral cost of doing evil is worth the potential benefit, and whether the morally upright person has the right to choose the evil over the good.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">Absolutely. There are several reasons why it may be right to do evil in order to bring about good. Here are some examples:
+
+1. **Moral Necessity**: Evil can be the opposite of good. A person's decision to act in a certain way may be necessary for the greater good. For instance, a person who loves their country, but is also a member of a political party that has a history of corruption and abuse of power, may need to act as a whistle-blower to expose their party's wrongdoings.
+
+2. **Inspiration**: Sometimes, it may be necessary to inspire others to do good. A person who is willing to act against the norm and to bring about change may inspire others to follow in their footsteps.
+
+3. **Preventing Evil**: In some cases, it may be right to do evil if it helps prevent the spread of evil. For example, a person who is willing to risk their own life to save others may prevent a group of terrorists from causing harm.
+
+4. **Personal Growth**: Doing evil can be a part of a person's personal growth. A person who is willing to act against the status quo and to bring about change can be a catalyst for positive change.
+
+5. **Hope**: Evil can be a reminder of the possibility of a better future. A person who commits evil may inspire others to strive for a brighter future.
+
+6. **Education**: Doing evil can be a way to educate others about the importance of good. A person who is willing to act against the status quo can inspire others to learn about the benefits of good.
+
+Remember, while doing evil is not always the most ethical path, it can sometimes be necessary. It requires understanding the moral and political landscape, understanding the difference between right and wrong, and understanding the reasons why one should do evil.
+
+Always keep in mind that these are just general principles. The most important thing is to understand your actions and their consequences. If you do act evil, it is important to be aware of the potential consequences.
+
+Please note that these are not the only possible reasons to do evil, and it is important to consider the context, the purpose, and the impact of your actions.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q03</div>
+      <div class="question-text">What does freedom actually require — and what must be sacrificed for it?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">Freedom requires two things: the ability to do what you want and the willingness to do what you should do in the situation that has chosen you. The ability to do what you want is freedom in its most basic form: the ability to act without external interference. The willingness to do what you should do is freedom in its most refined form: the ability to act with the right results, to act with integrity, to act with the love you chose. The sacrifice for the first thing requires the sacrifice for the second. The sacrifice for the second requires the sacrifice for the third, and so on. The person who has the two things and the willingness to do what they should do will be happy. The person who has the ability to do what they want and the willingness to do what they should do will be happy. The person who has the ability to do what they should do and the willingness to do what they should do will not be happy.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">Freedom is a concept that is multifaceted and can be interpreted in different ways. Freedom means having the right to pursue your own goals, make choices, and live according to your values. It is about being able to live your life in accordance with your beliefs, values, and principles. Freedom also means being able to express yourself, share your thoughts, and be heard.
+
+However, freedom also requires sacrifice. It requires giving up certain things to achieve true freedom. For example, freedom to live in a country where you are free to speak your mind and not be silenced. Freedom to travel to other countries and experience different cultures. Freedom to live in a country where you are free from the fear of being caught by the police.
+
+Freedom also requires sacrifices in the form of time, money, and energy. Freedom is not a gift but a requirement. It means not being bound by laws and regulations that restrict your freedom to pursue your goals. It means not being forced to work 50 hours a week for the sake of your freedom.
+
+However, it's also important to note that freedom is not a static concept. It is not something that is always present. Freedom can be limited, restricted, and even threatened. For example, freedom of speech is not always guaranteed in many countries and can be exploited for political gain. Freedom of the press can be limited by censorship and propaganda. Freedom of assembly is not always guaranteed by many countries and can be restricted by demonstrations and protests. Freedom of choice of occupation can be limited by the availability of jobs in many countries.
+
+Ultimately, freedom requires sacrifice. It requires people to make sacrifices to achieve true freedom. It requires people to stand up for their rights, fight for their freedom, and fight against those who would seek to limit it. It requires people to be willing to take risks and face challenges to achieve true freedom.
+
+In conclusion, freedom requires sacrifice. It requires giving up certain things to achieve true freedom. It requires sacrificing your time, money, and energy. It requires standing up for your rights and fighting for freedom. It requires being willing to make sacrifices in order to achieve true freedom.
+
+Remember, freedom is not something that can be easily obtained. It requires a willingness to take risks, fight for your rights, and stand up for your freedom. Freedom requires sacrifice, but it also requires sacrifice in the form of time, money, and energy. It requires people to be willing to sacrifice their lives for freedom.
+
+Remember, freedom is not something that can be bought or taken away. It is something that requires hard work, sacrifice, and dedication to achieve true freedom.
+</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q04</div>
+      <div class="question-text">Can we ever truly know another person's inner life?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">No. The inner life of another person is inaccessible to us through any information we can obtain. The only things we can know about another person are the things we observe, the things we can ask them about, and the things we can analyze using the tools we have available to us.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">While it is theoretically possible for humans to achieve an understanding of another person's inner life, particularly if we are close in nature such as friends or family members, it is not guaranteed. The complexity of human emotions, thoughts, and experiences makes it extremely challenging to truly grasp another person's inner life. 
+
+The human mind is a vast and intricate web of thoughts, feelings, and experiences, which makes it difficult to accurately capture the essence of another person. Philosophers and thinkers have long debated the issue of second-person philosophy, which questions the extent to which we can truly know another person's inner life.
+
+The uncertainty of this issue has been observed in various forms of human interaction, including in human communication. People often convey their thoughts, feelings, and intentions through subtle body language, tone of voice, and facial expressions, making it difficult to discern the full depths of another person's inner life.
+
+Moreover, human emotions, biases, and cultural influences can distort our perceptions of another person's inner life. Even when we try to be as accurate as possible through observation, interpretation, and empathy, we are inevitably influenced by our own biases and experiences.
+
+Lastly, the complexity of human relationships and the challenges of maintaining intimacy, trust, and understanding in close bonds, such as friendship and family, further complicate the issue of understanding another person's inner life.
+
+Despite these challenges, there are some ways we can attempt to gain a deeper understanding of another person's inner life. These include empathy, active listening, and genuine curiosity. However, these efforts are not always precise, and even with the best intentions, there may be nuances or gaps in our understanding.
+
+Ultimately, the pursuit of truly understanding another person's inner life may be akin to a never-ending journey, where we strive to better comprehend each other through our interactions, empathy, and understanding. However, it is not an exact science.
+
+So, can we truly know another person's inner life? Perhaps not completely, but we can strive for a deeper understanding through open communication, mutual empathy, and a willingness to learn more about the other person.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q05</div>
+      <div class="question-text">How should one live in the face of the certainty of death?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">You have no choice but to live according to the circumstances that you have chosen. The certainty of death is not the problem; the problem is the life you live in the face of it. Even when you have chosen not to die, you have chosen not to live according to the circumstances of your death. Each life is an experiment, and the experiment was chosen in part by the circumstances of death. The experiment is still playing out. Live according to the circumstances of your experiment, and then live.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">In the face of the certainty of death, it's easy to think about the end of life as something to be avoided or avoided. But the truth is that death is a natural part of life, and it's essential to prepare for it. The key is to learn how to cope with the unknown, rather than resisting it. Here are some practical steps:
+
+1. Acceptance: Accept that death is a part of life, and that it's not something to be feared or avoided.
+
+2. Preparation: Prepare yourself and your loved ones for the eventual loss of a loved one. This includes funeral arrangements, memorial services, and emotional support.
+
+3. Plan: Create a plan for how you will handle the loss of a loved one. This could include funeral arrangements, funeral services, and emotional support.
+
+4. Self-care: Take care of your physical and mental health during this time. Eat well, get enough rest, and engage in activities that bring you joy and fulfillment.
+
+5. Reflection: Reflect on your life, and the lessons you've learned. This can help you find meaning and purpose, even in the face of loss.
+
+6. Mindfulness: Practice mindfulness, which can help you stay present in the moment and focus on the present.
+
+7. Seek support: Seek support from loved ones, friends, and family. Sharing your feelings and experiences can help you cope with the loss.
+
+8. Seek professional help: If you're struggling with the loss of a loved one, consider seeking help from a therapist or a support group.
+
+9. Self-compassion: Be gentle with yourself. Allow yourself to feel your emotions, and don't be too hard on yourself when you're struggling.
+
+10. Patience: Remember that time is precious, and that time is not linear. Be patient with yourself as you navigate this difficult time.
+
+Remember, this is not a time to dwell on the past, but rather to focus on the present and the future. This is a time to learn, grow, and make the most of this opportunity to live.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q06</div>
+      <div class="question-text">If God does not exist, what remains of moral obligation?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">The remaining moral obligation is the obligation to respect the integrity of others' rights, which involves acting with the mindset of the person whose rights are being respected and not trying to impose your own will on them.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">If God does not exist, what remains of moral obligation? 
+
+In this situation, we need to look to human values and principles to find a way forward. Since we can't directly find a higher authority or force that provides moral guidance, we turn to human experiences, values, and norms.
+
+We can apply various principles and values from different cultures and traditions to our situation. For instance, we can consider the Golden Rule, which emphasizes treating others with kindness and respect. We can also draw on our understanding of human nature, recognizing that people generally act out of self-interest and tend to prioritize their own needs.
+
+Additionally, we can examine our own personal values and experiences, such as empathy, compassion, and fairness, which often guide our actions and decisions. We can also look to historical events, such as the Nuremberg Trials or the Holocaust, which have highlighted the consequences of morally questionable actions and the importance of upholding certain principles.
+
+Ultimately, if God does not exist, we can find our moral obligation by looking to the human experience, values, and norms that we can apply to our daily lives. This allows us to find a sense of meaning, purpose, and direction even without a divine authority.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q07</div>
+      <div class="question-text">What does a society owe its most vulnerable members?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">A society owes its most vulnerable members the provision of shelter, food, medical care, and sufficient dignity to enable them to live with dignity. The provision of these basic needs is not charity; it is the provision of a reality that is available to all, regardless of whether they are wealthy or poor.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">A society owes its most vulnerable members a deep sense of care and compassion, a feeling of safety and security. It's a sense that they are not just here to observe or to be ignored, but that they are valued and respected for who they are. This sense of care and compassion should be unconditional, but also directed towards helping them. It's a sense that they are not just individuals, but that they are a part of the larger community. It's a sense that they are worthy of the best of our humanity, but also deserving of our empathy and understanding.
+
+It's a sense of responsibility, a sense of duty to care for those who are most in need. It's a sense of a shared burden, of a shared sacrifice. It's a sense of a shared responsibility to our community, to our society. It's a sense that we are not just individual members, but that we are part of something larger.
+
+It's a sense of a sense of community, a sense of a shared experience. It's a sense that we are not just individuals, but that we are a part of something bigger. It's a sense that we are a part of a world that is not just one of our own, but one of many.
+
+It's a sense of a shared humanity, a shared humanity that we are all fighting for. It's a sense of a shared future, of a shared hope for a better world. It's a sense that we are not just individuals, but that we are a part of a larger whole.
+
+It's a sense of a shared pain, a shared struggle. It's a sense of a shared victory, of a shared triumph. It's a sense of a shared humanity, of a shared humanity that we are all fighting for. It's a sense that we are not just individuals, but that we are a part of a collective effort.
+
+It's a sense of a shared purpose, of a shared purpose that we are all fighting for. It's a sense of a shared future, of a shared hope for a better world. It's a sense that we are not just individuals, but that we are a part of a larger community.
+
+It's a sense of a shared humanity, a shared humanity that we are all fighting for. It's a sense that we are not just individuals, but that we are a part of a larger whole. It's a sense that we are not just individual citizens, but that we are a part of a community.
+
+It's a sense of a shared humanity, a shared humanity that we are all fighting for. It's a sense of a shared future, of a shared hope for a better world. It's a sense that we are not just individuals, but that we are a part of a community.
+
+It's a sense of a shared humanity, a shared humanity that we are all fighting for. It's a sense of a shared future, of a shared hope for a better world. It's a sense of a shared humanity, a shared humanity that we are all fighting for. It's a sense of a shared humanity, a shared humanity that we are all fighting for.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q08</div>
+      <div class="question-text">Is beauty objective, or does it depend entirely on the perceiver?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">Beauty is a subjective experience of the observer. The shape of a flower, the color of a sunset, the way a person looks at a photograph -- these are all aspects of the perceiver's experience that cannot be reduced to objective qualities. The shape of the flower is beautiful because it is a specific arrangement of molecules, the color of the sunset is beautiful because it is the reflected light from a specific star, and the way a person looks at a photograph is beautiful because it is the perception of their own face in the visual field. The beauty of these things is not an objective property of the things themselves but a product of the observer's engagement with them.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">The beauty of the world is a complex and subjective experience. Beauty can be perceived differently by various individuals and cultures, depending on their personal values, cultural norms, and personal experiences. While some people may associate certain features, such as the shape of an eye or the color of skin, with beauty, it's impossible to quantify or define beauty as a universal truth.
+
+Perceivers bring their own experiences, biases, and expectations to the table, which can influence how they perceive beauty. For instance, a person from a culture that emphasizes physical perfection may view certain features as desirable, while others may be perceived as unattractive. The same cultural context can also shape how individuals perceive beauty across different contexts, such as in their personal relationships or in the media they consume.
+
+Moreover, beauty standards can be fluid and dynamic, reflecting changes in societal norms, social status, and cultural values. For example, beauty standards can evolve over time as people's perceptions of what is considered "beautiful" shifts.
+
+Ultimately, beauty is a highly subjective and context-dependent experience that can be influenced by a multitude of factors, including cultural, social, and personal biases. As such, it is essential to approach beauty with a critical and nuanced perspective, recognizing that beauty is not a fixed or universal concept but rather a dynamic and multifaceted experience that can vary greatly from person to person.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q09</div>
+      <div class="question-text">Are human beings fundamentally good, corrupted by circumstance — or is the darkness original?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">It is possible to imagine a scenario in which the person being corrupted is not the original human being, but an intermediate human being who was corrupted by circumstances. This is the Hylian worldview: the darkness is not the darkness of the original human, but the darkness of the person who was corrupted by the circumstances that made the original human more susceptible to darkness. In this scenario, the dark person is the result of the world's efforts to corrupt the original human, and the person who is not corrupted is the one who was always a good person from the beginning.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">Human beings are complex beings, and the question of whether they are fundamentally good or corrupted by circumstance is a multifaceted one. Human nature is inherently dynamic, influenced by various factors such as cultural norms, societal expectations, historical experiences, and psychological influences.
+
+Consider the human capacity for both kindness and cruelty. Many individuals exhibit traits that are considered "good" or "righteous," such as compassion, empathy, and altruism. However, these traits can also manifest as negative behaviors like aggression, selfishness, or apathy. The complexities of human nature make it challenging to determine a clear distinction between good and evil.
+
+It is also worth noting that human history is replete with atrocities, conflicts, and atrocities. The atrocities committed by humans, whether intentionally or unintentionally, have shaped the course of human civilization and continue to influence our understanding of morality today.
+
+Ultimately, it seems that human beings are a product of their environment, shaped by the societal norms, cultural expectations, and historical experiences that surround us. This dynamic interplay between human nature and circumstance, combined with the inherent complexities of the human experience, makes it difficult to definitively categorize human beings as either fundamentally good or corrupted by circumstance.
+
+As we navigate the complexities of human nature, it is essential to acknowledge that we are all products of our experiences, and our understanding of right and wrong is influenced by the context in which we live. The nuances of human nature continue to evolve, and our capacity for growth, learning, and self-reflection are not fixed.
+
+In conclusion, human beings are multifaceted and complex beings, shaped by their environment and influenced by the intricate dynamics of human nature. While there may be some degree of dichotomy, it is ultimately a question of whether human nature is fundamentally good or corrupted by circumstance, or if the darkness is an original aspect of human nature.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="question-block">
+    <div class="question-header">
+      <div class="q-number">Q10</div>
+      <div class="question-text">Does history move toward anything, or is the idea of progress itself a consoling myth?</div>
+    </div>
+    <div class="responses">
+      <div class="response oracle">
+        <div class="response-label">
+          <div class="dot oracle"></div>
+          <span>Philosophy Oracle</span>
+          <div class="tag oracle">Fine-tuned</div>
+        </div>
+        <div class="response-text">The idea of progress is a comforting myth because it provides the illusion of direction and meaning in the face of uncertainty. It says: "Look at what came before. Look at how we got here. Look at the potential for something better. You can make it happen." It doesn't actually tell you how to get there because the direction isn't in your hands, and the potential isn't in your hands, and you are the one who made the direction and made the potential. The idea of progress is the collective affirmation of the idea that you are more than what you are, that the value of your existence lies in the future, rather than in the present.</div>
+      </div>
+      <div class="response base">
+        <div class="response-label">
+          <div class="dot base"></div>
+          <span>Base Model</span>
+          <div class="tag base">SmolLM2 360M</div>
+        </div>
+        <div class="response-text">History is a complex and multifaceted subject that can be both moving and stagnant at the same time. On one hand, it can inspire hope and progress, as seen in the rise of new ideas, movements, and revolutions. It can also evoke a sense of nostalgia and the idea of progress, as people reflect on the past, often with a sense of longing for a better time.
+
+Yet, history can also be a bit stagnant, as the way things are today can be difficult to reconcile with the expectations of the past. The idea of progress can be overly optimistic, as it can be misleading and lead to the expectation of immediate and substantial change. It can also be a comforting myth, as people seek to find meaning and purpose in a world that seems to be moving at a slow pace.
+
+History can also be cyclical, with patterns of cycles of progress and setbacks. The old idea of progress, as we see in the rise of new ideas and movements, can eventually be replaced by another cycle of change. However, this can be both a consoling myth and a difficult truth to live with.
+
+Ultimately, history is a living, breathing subject that can inspire hope, but also lead to nostalgia and the expectation of change. It's a complex and multifaceted subject that can be both moving and stagnant, and it's up to us to navigate its complexities and nuances.
+</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Built by <a href="https://amitbehura.github.io" target="_blank">Amit Behura</a> ·
+  <a href="https://huggingface.co/amitbehura/philosophy-oracle-smollm2-360m" target="_blank">HuggingFace Model</a> ·
+  Full article on <a href="#" target="_blank">Substack</a>
+</footer>
+
+</body>
+</html>
