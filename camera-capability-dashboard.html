@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capability Dashboard — Camera Readout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F6F3; --panel:#FFFFFF; --ink:#15181C; --ink-soft:#565C63;
+    --line:#DEDCD6; --amber:#D9631A; --green:#2E7D4F; --green-dim:#DCEEE2;
+    --grey-off:#B7BBC0; --grey-off-bg:#EFEFED; --red:#B23A2E;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);}
+  body{padding:20px 16px 60px;}
+  .wrap{max-width:920px;margin:0 auto;}
+  header{margin-bottom:20px;border-bottom:2px solid var(--ink);padding-bottom:14px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);margin-bottom:6px;}
+  h1{font-size:22px;margin:0 0 4px;font-weight:700;letter-spacing:-0.01em;}
+  .sub{font-size:13px;color:var(--ink-soft);line-height:1.5;max-width:64ch;}
+
+  button{font-family:var(--sans);font-weight:600;font-size:13px;border:none;border-radius:2px;padding:11px 18px;cursor:pointer;background:var(--ink);color:#fff;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+
+  .device-bar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;}
+  .device-bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-soft);}
+
+  .summary-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;}
+  @media (max-width:640px){.summary-strip{grid-template-columns:repeat(2,1fr);}}
+  .sum-box{background:var(--panel);border:1px solid var(--line);padding:12px;border-radius:2px;}
+  .sum-box .k{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--ink-soft);letter-spacing:.05em;}
+  .sum-box .v{font-family:var(--mono);font-size:20px;font-weight:600;margin-top:3px;}
+  .sum-box .v.amber{color:var(--amber);}
+
+  .group{background:var(--panel);border:1px solid var(--line);border-radius:2px;margin-bottom:14px;overflow:hidden;}
+  .group-head{padding:11px 14px;border-bottom:1px solid var(--line);background:var(--grey-off-bg);}
+  .group-head .name{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;}
+  .group-head .desc{font-size:11px;color:var(--ink-soft);margin-top:2px;}
+
+  .row{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);}
+  .row:last-child{border-bottom:none;}
+  .led{width:9px;height:9px;border-radius:50%;margin-top:4px;flex-shrink:0;background:var(--grey-off);}
+  .led.on{background:var(--green);box-shadow:0 0 0 3px var(--green-dim);}
+  .row-body{flex:1;min-width:0;}
+  .row-name{font-size:13px;font-weight:600;}
+  .row-detail{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px;word-break:break-word;}
+  .row-current{font-family:var(--mono);font-size:11px;color:var(--amber);margin-top:2px;}
+  .tag{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:2px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;align-self:flex-start;}
+  .tag.on{background:var(--green-dim);color:var(--green);}
+  .tag.off{background:var(--grey-off-bg);color:var(--ink-soft);}
+
+  .device-info{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:14px;margin-bottom:14px;}
+  .device-info .name{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12px;}
+  .kv:last-child{border-bottom:none;}
+  .kv .k{color:var(--ink-soft);}
+  .kv .v{font-family:var(--mono);text-align:right;word-break:break-word;max-width:60%;}
+
+  .empty-state{font-size:12px;color:var(--ink-soft);text-align:center;padding:40px 10px;font-family:var(--mono);}
+  video{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Inspektlabs · Capture Diagnostics</div>
+    <h1>Capability Dashboard</h1>
+    <div class="sub">Full readout of every camera constraint this browser exposes on this device, right now. Run it on each phone you test with to build a real picture of hardware-lever coverage across your fleet.</div>
+  </header>
+
+  <div class="device-bar">
+    <button id="startBtn">Scan this device</button>
+    <span class="status" id="statusLine">not scanned</span>
+  </div>
+
+  <div id="summaryStrip" class="summary-strip" style="display:none;">
+    <div class="sum-box"><div class="k">Exposure levers</div><div class="v amber" id="sumExp">—</div></div>
+    <div class="sum-box"><div class="k">Focus levers</div><div class="v amber" id="sumFocus">—</div></div>
+    <div class="sum-box"><div class="k">Color levers</div><div class="v amber" id="sumColor">—</div></div>
+    <div class="sum-box"><div class="k">Total supported</div><div class="v amber" id="sumTotal">—</div></div>
+  </div>
+
+  <div id="emptyState" class="empty-state">Tap "Scan this device" and grant camera permission.<br>Nothing is stored or sent anywhere, this reads capabilities locally in your browser.</div>
+
+  <div id="dashboardContent" style="display:none;">
+    <div class="device-info">
+      <div class="name">Device & Browser</div>
+      <div class="kv"><span class="k">User agent</span><span class="v" id="infoUA">—</span></div>
+      <div class="kv"><span class="k">Platform</span><span class="v" id="infoPlatform">—</span></div>
+      <div class="kv"><span class="k">Camera label</span><span class="v" id="infoLabel">—</span></div>
+      <div class="kv"><span class="k">Resolution (active)</span><span class="v" id="infoRes">—</span></div>
+      <div class="kv"><span class="k">Frame rate (active)</span><span class="v" id="infoFps">—</span></div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><div class="name">Exposure</div><div class="desc">Controls that affect how bright/dark the captured frame is, and how it's achieved (shutter vs sensor gain)</div></div>
+      <div id="groupExposure"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><div class="name">Focus</div><div class="desc">Controls that affect sharpness independent of exposure</div></div>
+      <div id="groupFocus"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><div class="name">Color</div><div class="desc">Controls that affect color accuracy, relevant for consistent damage-detection input</div></div>
+      <div id="groupColor"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><div class="name">Framing & Light</div><div class="desc">Zoom, pan/tilt, torch, and frame geometry</div></div>
+      <div id="groupFraming"></div>
+    </div>
+  </div>
+</div>
+
+<video id="video" playsinline autoplay muted></video>
+
+<script>
+const startBtn = document.getElementById('startBtn');
+const statusLine = document.getElementById('statusLine');
+const video = document.getElementById('video');
+const emptyState = document.getElementById('emptyState');
+const dashboardContent = document.getElementById('dashboardContent');
+const summaryStrip = document.getElementById('summaryStrip');
+
+// definitions: key -> {label, group, describe(range/values)}
+const DEFS = {
+  exposureMode:      {label:'Exposure mode', group:'groupExposure', fmt:c=>Array.isArray(c)?c.join(', '):String(c)},
+  exposureCompensation:{label:'Exposure compensation', group:'groupExposure', fmt:c=>`range ${c.min} to ${c.max}, step ${c.step}`},
+  exposureTime:      {label:'Shutter speed (exposureTime)', group:'groupExposure', fmt:c=>`range ${c.min}–${c.max}`},
+  iso:               {label:'ISO', group:'groupExposure', fmt:c=>`range ${c.min}–${c.max}`},
+
+  focusMode:         {label:'Focus mode', group:'groupFocus', fmt:c=>Array.isArray(c)?c.join(', '):String(c)},
+  focusDistance:     {label:'Focus distance', group:'groupFocus', fmt:c=>`range ${c.min}–${c.max}, step ${c.step}`},
+
+  whiteBalanceMode:  {label:'White balance mode', group:'groupColor', fmt:c=>Array.isArray(c)?c.join(', '):String(c)},
+  colorTemperature:  {label:'Color temperature', group:'groupColor', fmt:c=>`range ${c.min}–${c.max}K, step ${c.step}`},
+  brightness:        {label:'Brightness (manual)', group:'groupColor', fmt:c=>`range ${c.min}–${c.max}`},
+  contrast:          {label:'Contrast', group:'groupColor', fmt:c=>`range ${c.min}–${c.max}`},
+  saturation:        {label:'Saturation', group:'groupColor', fmt:c=>`range ${c.min}–${c.max}`},
+  sharpness:         {label:'Sharpness (in-camera)', group:'groupColor', fmt:c=>`range ${c.min}–${c.max}`},
+
+  zoom:              {label:'Zoom', group:'groupFraming', fmt:c=>`range ${c.min}–${c.max}, step ${c.step}`},
+  torch:             {label:'Torch', group:'groupFraming', fmt:c=>'on/off'},
+  pan:               {label:'Pan', group:'groupFraming', fmt:c=>`range ${c.min}–${c.max}`},
+  tilt:              {label:'Tilt', group:'groupFraming', fmt:c=>`range ${c.min}–${c.max}`},
+  frameRate:         {label:'Frame rate', group:'groupFraming', fmt:c=>`range ${c.min}–${c.max} fps`},
+  aspectRatio:       {label:'Aspect ratio', group:'groupFraming', fmt:c=>`range ${c.min?.toFixed?.(2)}–${c.max?.toFixed?.(2)}`},
+};
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  statusLine.textContent = 'requesting camera permission…';
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width:{ideal:1280}, height:{ideal:960} }
+    });
+    video.srcObject = stream;
+    const track = stream.getVideoTracks()[0];
+    await new Promise(r => video.onloadedmetadata = r);
+
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    const settings = track.getSettings ? track.getSettings() : {};
+
+    renderDeviceInfo(track, settings);
+    const counts = renderGroups(caps, settings);
+    renderSummary(counts);
+
+    emptyState.style.display = 'none';
+    dashboardContent.style.display = 'block';
+    summaryStrip.style.display = 'grid';
+    statusLine.textContent = 'scan complete';
+
+    // stop the stream, we only needed capabilities/settings, no need to keep camera on
+    stream.getTracks().forEach(t => t.stop());
+  }catch(err){
+    statusLine.textContent = 'error: ' + err.message;
+  }
+  startBtn.disabled = false;
+});
+
+function renderDeviceInfo(track, settings){
+  document.getElementById('infoUA').textContent = navigator.userAgent;
+  document.getElementById('infoPlatform').textContent = navigator.platform || '—';
+  document.getElementById('infoLabel').textContent = track.label || '—';
+  document.getElementById('infoRes').textContent = settings.width && settings.height ? `${settings.width} × ${settings.height}` : '—';
+  document.getElementById('infoFps').textContent = settings.frameRate ? `${Math.round(settings.frameRate)} fps` : '—';
+}
+
+function renderGroups(caps, settings){
+  const groupEls = {groupExposure:[], groupFocus:[], groupColor:[], groupFraming:[]};
+  const counts = {groupExposure:0, groupFocus:0, groupColor:0, groupFraming:0, total:0, totalChecked:0};
+
+  Object.keys(DEFS).forEach(key => {
+    const def = DEFS[key];
+    const supported = caps[key] !== undefined;
+    counts.totalChecked++;
+    if(supported) { counts[def.group]++; counts.total++; }
+
+    let detail = 'not exposed by this device/browser';
+    try{
+      if(supported) detail = def.fmt(caps[key]);
+    }catch(e){ detail = 'supported (detail unavailable)'; }
+
+    const currentVal = settings[key] !== undefined ? `current: ${settings[key]}` : '';
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="led ${supported?'on':''}"></div>
+      <div class="row-body">
+        <div class="row-name">${def.label}</div>
+        <div class="row-detail">${detail}</div>
+        ${currentVal ? `<div class="row-current">${currentVal}</div>` : ''}
+      </div>
+      <div class="tag ${supported?'on':'off'}">${supported?'supported':'not exposed'}</div>
+    `;
+    groupEls[def.group].push(row);
+  });
+
+  Object.keys(groupEls).forEach(g => {
+    const container = document.getElementById(g);
+    container.innerHTML = '';
+    groupEls[g].forEach(row => container.appendChild(row));
+  });
+
+  return counts;
+}
+
+function renderSummary(counts){
+  document.getElementById('sumExp').textContent = counts.groupExposure + ' / 4';
+  document.getElementById('sumFocus').textContent = counts.groupFocus + ' / 2';
+  document.getElementById('sumColor').textContent = counts.groupColor + ' / 6';
+  document.getElementById('sumTotal').textContent = counts.total + ' / ' + counts.totalChecked;
+}
+</script>
+</body>
+</html>
