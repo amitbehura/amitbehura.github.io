@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Torch — Light Trigger</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0b0d10;
+    color: #e6e8eb;
+  }
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .camera-box {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #2a2d31;
+  }
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .overlay {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0));
+    color: #fff;
+    transition: background 0.2s ease;
+  }
+  .overlay.on { background: linear-gradient(to top, rgba(20,90,20,0.9), rgba(0,0,0,0)); }
+  .overlay.off { background: linear-gradient(to top, rgba(90,60,20,0.9), rgba(0,0,0,0)); }
+  .overlay .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+  }
+  .tag.on { background: #2e7d32; }
+  .tag.off { background: #b26a00; }
+  .tag.idle { background: #444; }
+
+  .badge-row {
+    position: absolute;
+    top: 10px; left: 10px; right: 10px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .badge {
+    background: rgba(0,0,0,0.5);
+    padding: 3px 7px;
+    border-radius: 6px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .stat {
+    background: #16181c;
+    border: 1px solid #2a2d31;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .stat .label { font-size: 11px; color: #9aa0a6; margin-bottom: 2px; }
+  .stat .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #2a2d31;
+    background: #1c1f24;
+    color: #e6e8eb;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:active { background: #26292f; }
+  button.primary { background: #2e5cff; border-color: #2e5cff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .threshold-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: #9aa0a6;
+  }
+  .threshold-row input[type=range] { flex: 1; }
+
+  .logs {
+    margin-top: 16px;
+  }
+  .logs h2 {
+    font-size: 13px;
+    margin: 0 0 6px;
+    color: #9aa0a6;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+  }
+  .log-list {
+    max-height: 240px;
+    overflow-y: auto;
+    background: #101215;
+    border: 1px solid #2a2d31;
+    border-radius: 10px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+  }
+  .log-entry {
+    padding: 6px 10px;
+    border-bottom: 1px solid #1c1f24;
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    gap: 8px;
+    align-items: center;
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry .t { color: #6b7076; }
+  .log-entry .msg.on { color: #6fcf73; }
+  .log-entry .msg.off { color: #f2b94b; }
+  .log-entry .msg.info { color: #8ab4f8; }
+  .log-entry .lat { text-align: right; color: #9aa0a6; }
+
+  .status-line {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #9aa0a6;
+    min-height: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Auto Torch — Light Trigger</h1>
+
+  <div class="camera-box">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="badge-row">
+      <span class="badge" id="brightnessBadge">brightness: —</span>
+      <span class="badge" id="supportBadge">torch: checking…</span>
+    </div>
+    <div class="overlay" id="overlay">
+      <span class="tag idle" id="overlayTag">IDLE</span><br>
+      <span id="overlayText">Waiting for camera…</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Last trigger latency</div>
+      <div class="value" id="latencyOn">— ms</div>
+    </div>
+    <div class="stat">
+      <div class="label">Last close latency</div>
+      <div class="value" id="latencyOff">— ms</div>
+    </div>
+  </div>
+
+  <div class="threshold-row">
+    <span>Dark &lt;</span>
+    <input type="range" id="darkSlider" min="10" max="100" value="40">
+    <span id="darkVal">40</span>
+  </div>
+  <div class="threshold-row">
+    <span>Light &gt;</span>
+    <input type="range" id="lightSlider" min="20" max="150" value="70">
+    <span id="lightVal">70</span>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn" class="primary">Start Camera</button>
+    <button id="manualBtn" disabled>Manual Toggle</button>
+    <button id="clearBtn">Clear Log</button>
+  </div>
+
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="logs">
+    <h2><span>Log</span><span id="logCount">0 entries</span></h2>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script>
+(function () {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const overlay = document.getElementById('overlay');
+  const overlayTag = document.getElementById('overlayTag');
+  const overlayText = document.getElementById('overlayText');
+  const brightnessBadge = document.getElementById('brightnessBadge');
+  const supportBadge = document.getElementById('supportBadge');
+  const latencyOnEl = document.getElementById('latencyOn');
+  const latencyOffEl = document.getElementById('latencyOff');
+  const logList = document.getElementById('logList');
+  const logCount = document.getElementById('logCount');
+  const statusLine = document.getElementById('statusLine');
+  const startBtn = document.getElementById('startBtn');
+  const manualBtn = document.getElementById('manualBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const darkSlider = document.getElementById('darkSlider');
+  const lightSlider = document.getElementById('lightSlider');
+  const darkVal = document.getElementById('darkVal');
+  const lightVal = document.getElementById('lightVal');
+
+  const SAMPLE_INTERVAL_MS = 500;
+  const MAX_LOG_ENTRIES = 50;
+  const SAMPLE_W = 40, SAMPLE_H = 30;
+
+  let stream = null;
+  let track = null;
+  let torchSupported = false;
+  let torchOn = false;
+  let manualOverride = false;
+  let sampleTimer = null;
+  let pendingSince = null; // timestamp when threshold first crossed, for latency measurement
+  let logs = [];
+
+  darkSlider.addEventListener('input', () => darkVal.textContent = darkSlider.value);
+  lightSlider.addEventListener('input', () => lightVal.textContent = lightSlider.value);
+
+  function addLog(kind, message, latencyMs) {
+    const entry = {
+      time: new Date(),
+      kind, // 'on' | 'off' | 'info'
+      message,
+      latencyMs: latencyMs != null ? Math.round(latencyMs) : null
+    };
+    logs.unshift(entry);
+    if (logs.length > MAX_LOG_ENTRIES) logs.pop();
+    renderLogs();
+  }
+
+  function renderLogs() {
+    logCount.textContent = logs.length + ' entries';
+    logList.innerHTML = logs.map(e => {
+      const t = e.time.toLocaleTimeString([], { hour12: false });
+      const lat = e.latencyMs != null ? e.latencyMs + 'ms' : '';
+      return '<div class="log-entry">' +
+        '<span class="t">' + t + '</span>' +
+        '<span class="msg ' + e.kind + '">' + e.message + '</span>' +
+        '<span class="lat">' + lat + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  clearBtn.addEventListener('click', () => {
+    logs = [];
+    renderLogs();
+  });
+
+  function setOverlay(state, text) {
+    overlay.className = 'overlay ' + state;
+    overlayTag.className = 'tag ' + state;
+    overlayTag.textContent = state === 'on' ? 'TORCH ON' : state === 'off' ? 'TORCH OFF' : 'IDLE';
+    overlayText.textContent = text;
+  }
+
+  async function startCamera() {
+    statusLine.textContent = 'Requesting camera access…';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+    } catch (err) {
+      statusLine.textContent = 'Camera error: ' + err.message;
+      addLog('info', 'Camera access failed: ' + err.message);
+      return;
+    }
+    video.srcObject = stream;
+    track = stream.getVideoTracks()[0];
+
+    const caps = (track.getCapabilities && track.getCapabilities()) || {};
+    torchSupported = !!caps.torch;
+    supportBadge.textContent = torchSupported ? 'torch: supported' : 'torch: unsupported (manual)';
+
+    startBtn.disabled = true;
+    manualBtn.disabled = false;
+    statusLine.textContent = 'Camera running. Sampling brightness every ' + SAMPLE_INTERVAL_MS + 'ms.';
+    addLog('info', 'Camera started. Torch API ' + (torchSupported ? 'available.' : 'NOT available — using manual prompt fallback.'));
+
+    setOverlay('idle', 'Monitoring brightness…');
+    sampleTimer = setInterval(sampleFrame, SAMPLE_INTERVAL_MS);
+  }
+
+  function sampleFrame() {
+    if (!video.videoWidth) return;
+    canvas.width = SAMPLE_W;
+    canvas.height = SAMPLE_H;
+    ctx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+    const data = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+
+    let sum = 0;
+    const pixelCount = SAMPLE_W * SAMPLE_H;
+    for (let i = 0; i < data.length; i += 4) {
+      // perceived luminance
+      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    const brightness = sum / pixelCount;
+    brightnessBadge.textContent = 'brightness: ' + brightness.toFixed(1);
+
+    evaluateTrigger(brightness);
+  }
+
+  function evaluateTrigger(brightness) {
+    if (manualOverride) return; // user is driving manually, don't auto-fight them
+
+    const darkThreshold = Number(darkSlider.value);
+    const lightThreshold = Number(lightSlider.value);
+
+    if (!torchOn && brightness < darkThreshold) {
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOn(brightness, darkThreshold);
+    } else if (torchOn && brightness > lightThreshold) {
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOff(brightness, lightThreshold);
+    } else {
+      pendingSince = null;
+    }
+  }
+
+  async function triggerOn(brightness, threshold) {
+    const reason = 'brightness ' + brightness.toFixed(1) + ' below threshold ' + threshold;
+    const t0 = pendingSince != null ? pendingSince : performance.now();
+
+    if (torchSupported) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        const latency = performance.now() - t0;
+        torchOn = true;
+        pendingSince = null;
+        latencyOnEl.textContent = Math.round(latency) + ' ms';
+        setOverlay('on', 'Triggered: ' + reason);
+        addLog('on', 'Torch ON — ' + reason, latency);
+      } catch (err) {
+        addLog('info', 'Torch ON failed: ' + err.message);
+        pendingSince = null;
+      }
+    } else {
+      const latency = performance.now() - t0;
+      torchOn = true; // treat prompt as "active" state to avoid re-firing every sample
+      pendingSince = null;
+      latencyOnEl.textContent = Math.round(latency) + ' ms';
+      setOverlay('on', 'Triggered: ' + reason + ' — turn on your flashlight manually');
+      addLog('on', 'Prompt shown (no torch API) — ' + reason, latency);
+    }
+  }
+
+  async function triggerOff(brightness, threshold) {
+    const reason = 'brightness ' + brightness.toFixed(1) + ' above threshold ' + threshold;
+    const t0 = pendingSince != null ? pendingSince : performance.now();
+
+    if (torchSupported) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: false }] });
+        const latency = performance.now() - t0;
+        torchOn = false;
+        pendingSince = null;
+        latencyOffEl.textContent = Math.round(latency) + ' ms';
+        setOverlay('off', 'Closed: ' + reason);
+        addLog('off', 'Torch OFF — ' + reason, latency);
+      } catch (err) {
+        addLog('info', 'Torch OFF failed: ' + err.message);
+        pendingSince = null;
+      }
+    } else {
+      const latency = performance.now() - t0;
+      torchOn = false;
+      pendingSince = null;
+      latencyOffEl.textContent = Math.round(latency) + ' ms';
+      setOverlay('off', 'Closed: ' + reason + ' — you can turn off your flashlight');
+      addLog('off', 'Prompt cleared (no torch API) — ' + reason, latency);
+    }
+  }
+
+  manualBtn.addEventListener('click', async () => {
+    manualOverride = !manualOverride;
+    if (manualOverride) {
+      manualBtn.textContent = 'Resume Auto';
+      addLog('info', 'Manual override engaged — auto-trigger paused.');
+      setOverlay('idle', 'Manual override — auto-trigger paused.');
+    } else {
+      manualBtn.textContent = 'Manual Toggle';
+      addLog('info', 'Manual override released — auto-trigger resumed.');
+      setOverlay('idle', 'Monitoring brightness…');
+    }
+  });
+
+  startBtn.addEventListener('click', startCamera);
+})();
+</script>
+</body>
+</html>
