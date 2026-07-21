@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Real-Time Blur Detector — 5 Methods</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    margin: 0; padding: 16px;
+    background: #0f1115; color: #e6e6e6;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  h1 { font-size: clamp(18px, 5vw, 22px); margin: 0 0 4px; }
+  p.sub { color: #9099a8; margin: 0 0 16px; font-size: 13px; }
+  .banner {
+    background: #3a2a10; border: 1px solid #7a5a1e; color: #f5c469;
+    border-radius: 8px; padding: 10px 14px; font-size: 12.5px;
+    margin-bottom: 16px; display: none;
+  }
+  .banner.show { display: block; }
+  .top {
+    display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+    margin-bottom: 20px;
+  }
+  video, canvas.preview {
+    width: 100%; max-width: 480px; aspect-ratio: 4 / 3; height: auto;
+    background: #000; border-radius: 8px; border: 1px solid #2a2e37;
+    display: block; margin: 0 auto; object-fit: cover;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; max-width: 480px; margin: 0 auto; }
+  button {
+    background: #2563eb; color: #fff; border: none; padding: 14px 18px;
+    border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: 600;
+    flex: 1 1 140px; min-height: 48px; touch-action: manipulation;
+  }
+  button.secondary { background: #2a2e37; }
+  button:disabled { background: #3a3f4b; cursor: not-allowed; }
+  button.stop { background: #dc2626; }
+  .status { font-size: 13px; color: #9099a8; width: 100%; max-width: 480px; margin: 0 auto; }
+  .status.error { color: #f87171; }
+  .summary {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: #cbd2dc;
+    background: #171a21; border: 1px solid #2a2e37; border-radius: 8px;
+    padding: 10px 14px; width: 100%;
+  }
+  .summary b { color: #fff; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  @media (min-width: 700px) {
+    body { padding: 24px; }
+    .top { flex-direction: row; align-items: flex-start; }
+    video, canvas.preview { width: 320px; max-width: 320px; }
+    .controls, .status { max-width: 200px; }
+    button { flex: none; width: 100%; }
+  }
+  .card {
+    background: #171a21; border: 1px solid #2a2e37; border-radius: 10px;
+    padding: 16px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 14px; }
+  .card p.desc { margin: 0 0 14px; font-size: 12px; color: #7d8494; min-height: 32px; }
+  .score { font-size: 34px; font-weight: 700; line-height: 1; }
+  .score.sharp { color: #4ade80; }
+  .score.blurry { color: #f87171; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; font-size: 12px; color: #9099a8; }
+  .row span.val { color: #d7dce4; font-variant-numeric: tabular-nums; }
+  canvas.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Real-Time Blur Detector</h1>
+<p class="sub">5 independent focus-measure algorithms running live off the same camera frame, each with its own compute latency.</p>
+
+<div id="secureBanner" class="banner">⚠️ Camera access needs HTTPS or localhost. Opening this as a local file won't work on most phones — serve it from a web server first.</div>
+
+<div class="top">
+  <video id="video" autoplay muted playsinline></video>
+  <div class="controls">
+    <button id="startBtn">Start Camera</button>
+    <button id="switchBtn" class="secondary" disabled>Switch Camera</button>
+    <button id="stopBtn" class="stop" disabled>Stop</button>
+    <div id="status" class="status">Idle. Tap Start Camera.</div>
+  </div>
+</div>
+
+<div class="summary" id="summary">
+  <div>Frame size: <b id="frameSize">160×120</b></div>
+  <div>Capture FPS: <b id="fps">0</b></div>
+  <div>Total pipeline latency: <b id="totalLatency">0 ms</b></div>
+</div>
+<br>
+
+<div class="grid" id="grid"></div>
+
+<canvas id="workCanvas" class="hidden"></canvas>
+<canvas id="fftCanvas" class="hidden"></canvas>
+<canvas id="glCanvas" class="hidden"></canvas>
+
+<script>
+"use strict";
+
+// ---------- Config ----------
+const PROC_W = 160, PROC_H = 120;   // shared processing resolution for CPU methods
+const FFT_N = 64;                    // must be power of two
+const HISTORY = 20;                  // rolling average window for latency
+
+// ---------- DOM ----------
+const video = document.getElementById("video");
+const startBtn = document.getElementById("startBtn");
+const switchBtn = document.getElementById("switchBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const secureBanner = document.getElementById("secureBanner");
+
+if (!window.isSecureContext) secureBanner.classList.add("show");
+const grid = document.getElementById("grid");
+const fpsEl = document.getElementById("fps");
+const totalLatencyEl = document.getElementById("totalLatency");
+document.getElementById("frameSize").textContent = `${PROC_W}×${PROC_H}`;
+
+const workCanvas = document.getElementById("workCanvas");
+workCanvas.width = PROC_W; workCanvas.height = PROC_H;
+const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
+
+const fftCanvas = document.getElementById("fftCanvas");
+fftCanvas.width = FFT_N; fftCanvas.height = FFT_N;
+const fftCtx = fftCanvas.getContext("2d", { willReadFrequently: true });
+
+const glCanvas = document.getElementById("glCanvas");
+glCanvas.width = PROC_W; glCanvas.height = PROC_H;
+
+// ---------- Method registry ----------
+const METHODS = [
+  { id: "laplacian", name: "Laplacian Variance", desc: "Variance of the Laplacian (2nd derivative) of the grayscale frame. The classic OpenCV-style blur metric." },
+  { id: "sobel",      name: "Sobel Gradient Variance", desc: "Variance of gradient magnitude from Sobel Gx/Gy kernels." },
+  { id: "tenengrad",  name: "Tenengrad", desc: "Mean squared Sobel gradient magnitude — a focus measure from autofocus systems." },
+  { id: "fft",        name: "High-Frequency FFT Ratio", desc: "2D FFT on a 64×64 patch; ratio of high-frequency to total spectral energy." },
+  { id: "webgl",      name: "GPU Laplacian (WebGL)", desc: "Same Laplacian convolution as method 1, but run as a fragment shader on the GPU." },
+];
+
+const state = {}; // per-method: { history: [], lastScore, lastLatency, el, scoreEl, latEl, avgEl }
+
+for (const m of METHODS) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <h3>${m.name}</h3>
+    <p class="desc">${m.desc}</p>
+    <div class="score" id="score-${m.id}">—</div>
+    <div class="row"><span>Latency (this frame)</span><span class="val" id="lat-${m.id}">— ms</span></div>
+    <div class="row"><span>Avg latency (last ${HISTORY})</span><span class="val" id="avg-${m.id}">— ms</span></div>
+  `;
+  grid.appendChild(card);
+  state[m.id] = {
+    history: [],
+    scoreEl: document.getElementById(`score-${m.id}`),
+    latEl: document.getElementById(`lat-${m.id}`),
+    avgEl: document.getElementById(`avg-${m.id}`),
+  };
+}
+
+// ---------- Shared grayscale conversion ----------
+function toGrayscale(imageData) {
+  const { data, width, height } = imageData;
+  const gray = new Float32Array(width * height);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    // luma weights
+    gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  }
+  return { gray, width, height };
+}
+
+function variance(arr) {
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) sum += arr[i];
+  const mean = sum / arr.length;
+  let sq = 0;
+  for (let i = 0; i < arr.length; i++) { const d = arr[i] - mean; sq += d * d; }
+  return sq / arr.length;
+}
+
+function convolve3x3(gray, w, h, kernel) {
+  const out = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let sum = 0, k = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          sum += gray[(y + ky) * w + (x + kx)] * kernel[k++];
+        }
+      }
+      out[y * w + x] = sum;
+    }
+  }
+  return out;
+}
+
+// ---------- Method 1: Laplacian Variance ----------
+const LAPLACIAN_KERNEL = [0, 1, 0, 1, -4, 1, 0, 1, 0];
+function methodLaplacian(gray, w, h) {
+  const edges = convolve3x3(gray, w, h, LAPLACIAN_KERNEL);
+  return variance(edges);
+}
+
+// ---------- Method 2 & 3 share Sobel ----------
+const SOBEL_X = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+const SOBEL_Y = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+function sobelMagnitude(gray, w, h) {
+  const gx = convolve3x3(gray, w, h, SOBEL_X);
+  const gy = convolve3x3(gray, w, h, SOBEL_Y);
+  const mag = new Float32Array(w * h);
+  for (let i = 0; i < mag.length; i++) mag[i] = Math.sqrt(gx[i] * gx[i] + gy[i] * gy[i]);
+  return mag;
+}
+function methodSobel(mag) {
+  return variance(mag);
+}
+function methodTenengrad(mag) {
+  let sum = 0;
+  for (let i = 0; i < mag.length; i++) sum += mag[i] * mag[i];
+  return sum / mag.length;
+}
+
+// ---------- Method 4: FFT high-frequency ratio ----------
+// Iterative radix-2 Cooley-Tukey FFT, in place, re/im are Float32Array of length n (power of 2)
+function fft1d(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let curWr = 1, curWi = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const uRe = re[i + k], uIm = im[i + k];
+        const vRe = re[i + k + len / 2] * curWr - im[i + k + len / 2] * curWi;
+        const vIm = re[i + k + len / 2] * curWi + im[i + k + len / 2] * curWr;
+        re[i + k] = uRe + vRe; im[i + k] = uIm + vIm;
+        re[i + k + len / 2] = uRe - vRe; im[i + k + len / 2] = uIm - vIm;
+        const nWr = curWr * wr - curWi * wi;
+        const nWi = curWr * wi + curWi * wr;
+        curWr = nWr; curWi = nWi;
+      }
+    }
+  }
+}
+
+function methodFFT(videoEl) {
+  // downsample current frame to FFT_N x FFT_N grayscale patch
+  fftCtx.drawImage(videoEl, 0, 0, FFT_N, FFT_N);
+  const imgData = fftCtx.getImageData(0, 0, FFT_N, FFT_N);
+  const { gray } = toGrayscale(imgData);
+
+  // 2D FFT: rows then columns
+  const re = new Float32Array(gray); // copy
+  const im = new Float32Array(FFT_N * FFT_N);
+
+  const rowRe = new Float32Array(FFT_N), rowIm = new Float32Array(FFT_N);
+  for (let y = 0; y < FFT_N; y++) {
+    for (let x = 0; x < FFT_N; x++) { rowRe[x] = re[y * FFT_N + x]; rowIm[x] = 0; }
+    fft1d(rowRe, rowIm);
+    for (let x = 0; x < FFT_N; x++) { re[y * FFT_N + x] = rowRe[x]; im[y * FFT_N + x] = rowIm[x]; }
+  }
+  const colRe = new Float32Array(FFT_N), colIm = new Float32Array(FFT_N);
+  for (let x = 0; x < FFT_N; x++) {
+    for (let y = 0; y < FFT_N; y++) { colRe[y] = re[y * FFT_N + x]; colIm[y] = im[y * FFT_N + x]; }
+    fft1d(colRe, colIm);
+    for (let y = 0; y < FFT_N; y++) { re[y * FFT_N + x] = colRe[y]; im[y * FFT_N + x] = colIm[y]; }
+  }
+
+  // energy split: low-freq (near DC, wrap-aware) vs total
+  let totalEnergy = 0, highEnergy = 0;
+  const radius = FFT_N / 8; // low-freq cutoff radius
+  for (let y = 0; y < FFT_N; y++) {
+    const dy = Math.min(y, FFT_N - y);
+    for (let x = 0; x < FFT_N; x++) {
+      const dx = Math.min(x, FFT_N - x);
+      const mag = re[y * FFT_N + x] ** 2 + im[y * FFT_N + x] ** 2;
+      totalEnergy += mag;
+      if (Math.sqrt(dx * dx + dy * dy) > radius) highEnergy += mag;
+    }
+  }
+  return totalEnergy > 0 ? (highEnergy / totalEnergy) * 1000 : 0; // scaled for readability
+}
+
+// ---------- Method 5: WebGL Laplacian ----------
+let gl, glProgram, glTexture, glFramebuffer, glPixelBuf;
+function initWebGL() {
+  gl = glCanvas.getContext("webgl", { preserveDrawingBuffer: false });
+  if (!gl) return false;
+
+  const vsSrc = `
+    attribute vec2 aPos;
+    varying vec2 vUv;
+    void main() { vUv = (aPos + 1.0) * 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }
+  `;
+  const fsSrc = `
+    precision mediump float;
+    varying vec2 vUv;
+    uniform sampler2D uTex;
+    uniform vec2 uTexel;
+    float luma(vec2 uv) {
+      vec3 c = texture2D(uTex, uv).rgb;
+      return dot(c, vec3(0.299, 0.587, 0.114));
+    }
+    void main() {
+      float c  = luma(vUv);
+      float up = luma(vUv + vec2(0.0, -uTexel.y));
+      float dn = luma(vUv + vec2(0.0,  uTexel.y));
+      float lf = luma(vUv + vec2(-uTexel.x, 0.0));
+      float rt = luma(vUv + vec2( uTexel.x, 0.0));
+      float lap = (up + dn + lf + rt - 4.0 * c) * 0.5 + 0.5;
+      gl_FragColor = vec4(vec3(lap), 1.0);
+    }
+  `;
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  glProgram = gl.createProgram();
+  gl.attachShader(glProgram, compile(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(glProgram, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(glProgram);
+  gl.useProgram(glProgram);
+
+  const quad = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(glProgram, "aPos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(gl.getUniformLocation(glProgram, "uTexel"), 1 / PROC_W, 1 / PROC_H);
+
+  glTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, glTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  gl.viewport(0, 0, PROC_W, PROC_H);
+  glPixelBuf = new Uint8Array(PROC_W * PROC_H * 4);
+  return true;
+}
+
+function methodWebGL(sourceCanvas) {
+  if (!gl) return 0;
+  gl.bindTexture(gl.TEXTURE_2D, glTexture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.readPixels(0, 0, PROC_W, PROC_H, gl.RGBA, gl.UNSIGNED_BYTE, glPixelBuf);
+  // variance of the Laplacian channel (stored, offset+scaled by shader to fit 0..1)
+  let sum = 0, n = PROC_W * PROC_H;
+  for (let i = 0; i < glPixelBuf.length; i += 4) sum += glPixelBuf[i];
+  const mean = sum / n;
+  let sq = 0;
+  for (let i = 0; i < glPixelBuf.length; i += 4) { const d = glPixelBuf[i] - mean; sq += d * d; }
+  return sq / n;
+}
+
+const webglReady = initWebGL();
+if (!webglReady) {
+  document.getElementById("score-webgl").textContent = "WebGL unavailable";
+}
+
+// ---------- Rolling stats + UI update ----------
+function pushResult(id, score, latencyMs) {
+  const s = state[id];
+  s.history.push(latencyMs);
+  if (s.history.length > HISTORY) s.history.shift();
+  const avg = s.history.reduce((a, b) => a + b, 0) / s.history.length;
+
+  s.scoreEl.textContent = score.toFixed(1);
+  // arbitrary sharp/blurry visual threshold, method-relative is more meaningful
+  // than an absolute cutoff, but this gives a quick at-a-glance signal
+  s.scoreEl.className = "score " + (score > (s._baseline ??= score) * 0.6 ? "sharp" : "blurry");
+  s.latEl.textContent = latencyMs.toFixed(2) + " ms";
+  s.avgEl.textContent = avg.toFixed(2) + " ms";
+}
+
+// ---------- Main loop ----------
+// Mobile CPUs choke if all 5 methods run at full 60fps; throttle actual
+// processing while the video preview itself stays smooth.
+const PROC_INTERVAL_MS = 120; // ~8 processed frames/sec
+let running = false, rafId = null;
+let frameCount = 0, fpsWindowStart = performance.now();
+let lastProcessTime = 0;
+
+function processFrame(now) {
+  if (!running) return;
+  rafId = requestAnimationFrame(processFrame);
+  if (now - lastProcessTime < PROC_INTERVAL_MS) return;
+  lastProcessTime = now;
+
+  const frameStart = performance.now();
+
+  workCtx.drawImage(video, 0, 0, PROC_W, PROC_H);
+  const imageData = workCtx.getImageData(0, 0, PROC_W, PROC_H);
+  const { gray, width, height } = toGrayscale(imageData);
+
+  let t0, t1;
+
+  t0 = performance.now();
+  const lapScore = methodLaplacian(gray, width, height);
+  t1 = performance.now();
+  pushResult("laplacian", lapScore, t1 - t0);
+
+  t0 = performance.now();
+  const mag = sobelMagnitude(gray, width, height);
+  const sobelScore = methodSobel(mag);
+  t1 = performance.now();
+  pushResult("sobel", sobelScore, t1 - t0);
+
+  t0 = performance.now();
+  const tenScore = methodTenengrad(mag);
+  t1 = performance.now();
+  pushResult("tenengrad", tenScore, t1 - t0);
+
+  t0 = performance.now();
+  const fftScore = methodFFT(video);
+  t1 = performance.now();
+  pushResult("fft", fftScore, t1 - t0);
+
+  if (webglReady) {
+    t0 = performance.now();
+    const glScore = methodWebGL(workCanvas);
+    t1 = performance.now();
+    pushResult("webgl", glScore, t1 - t0);
+  }
+
+  const frameEnd = performance.now();
+  totalLatencyEl.textContent = (frameEnd - frameStart).toFixed(2) + " ms";
+
+  frameCount++;
+  if (now - fpsWindowStart >= 1000) {
+    fpsEl.textContent = frameCount.toString();
+    frameCount = 0;
+    fpsWindowStart = now;
+  }
+}
+
+// ---------- Camera control ----------
+let currentFacingMode = "environment"; // rear camera by default on phones
+
+async function openCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false,
+  });
+  const old = video.srcObject;
+  if (old) old.getTracks().forEach(t => t.stop());
+  video.srcObject = stream;
+  await video.play();
+}
+
+async function start() {
+  startBtn.disabled = true;
+  statusEl.textContent = "Requesting camera...";
+  statusEl.className = "status";
+  try {
+    await openCamera();
+    running = true;
+    switchBtn.disabled = false;
+    stopBtn.disabled = false;
+    statusEl.textContent = "Running (" + (currentFacingMode === "environment" ? "rear" : "front") + " camera).";
+    lastProcessTime = 0;
+    rafId = requestAnimationFrame(processFrame);
+  } catch (err) {
+    statusEl.textContent = "Camera error: " + err.message;
+    statusEl.className = "status error";
+    startBtn.disabled = false;
+  }
+}
+
+async function switchCamera() {
+  currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+  switchBtn.disabled = true;
+  statusEl.textContent = "Switching camera...";
+  try {
+    await openCamera();
+    statusEl.textContent = "Running (" + (currentFacingMode === "environment" ? "rear" : "front") + " camera).";
+  } catch (err) {
+    statusEl.textContent = "Camera error: " + err.message;
+    statusEl.className = "status error";
+  }
+  switchBtn.disabled = false;
+}
+
+function stop() {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  const stream = video.srcObject;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  startBtn.disabled = false;
+  switchBtn.disabled = true;
+  stopBtn.disabled = true;
+  statusEl.textContent = "Stopped.";
+}
+
+startBtn.addEventListener("click", start);
+switchBtn.addEventListener("click", switchCamera);
+stopBtn.addEventListener("click", stop);
+</script>
+</body>
+</html>
