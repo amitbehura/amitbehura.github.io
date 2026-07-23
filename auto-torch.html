@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Torch — Light Trigger</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0b0d10;
+    color: #e6e8eb;
+  }
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .camera-box {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #2a2d31;
+  }
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .overlay {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0));
+    color: #fff;
+    transition: background 0.2s ease;
+  }
+  .overlay.on { background: linear-gradient(to top, rgba(20,90,20,0.9), rgba(0,0,0,0)); }
+  .overlay.off { background: linear-gradient(to top, rgba(90,60,20,0.9), rgba(0,0,0,0)); }
+  .overlay .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+  }
+  .tag.on { background: #2e7d32; }
+  .tag.off { background: #b26a00; }
+  .tag.idle { background: #444; }
+
+  .mode-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid #2a2d31;
+    background: #16181c;
+    color: #9aa0a6;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mode-btn.active {
+    background: #2e5cff;
+    border-color: #2e5cff;
+    color: #fff;
+  }
+
+  .center-box {
+    position: absolute;
+    left: 30%; top: 30%; right: 30%; bottom: 30%;
+    border: 1.5px dashed rgba(255,255,255,0.5);
+    border-radius: 6px;
+    display: none;
+    pointer-events: none;
+  }
+  .center-box.visible { display: block; }
+
+  .badge-row {
+    position: absolute;
+    top: 10px; left: 10px; right: 10px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  .badge {
+    background: rgba(0,0,0,0.5);
+    padding: 3px 7px;
+    border-radius: 6px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .stat {
+    background: #16181c;
+    border: 1px solid #2a2d31;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .stat .label { font-size: 11px; color: #9aa0a6; margin-bottom: 2px; }
+  .stat .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #2a2d31;
+    background: #1c1f24;
+    color: #e6e8eb;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:active { background: #26292f; }
+  button.primary { background: #2e5cff; border-color: #2e5cff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .threshold-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: #9aa0a6;
+  }
+  .threshold-row input[type=range] { flex: 1; }
+
+  .logs {
+    margin-top: 16px;
+  }
+  .logs h2 {
+    font-size: 13px;
+    margin: 0 0 6px;
+    color: #9aa0a6;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+  }
+  .log-list {
+    max-height: 240px;
+    overflow-y: auto;
+    background: #101215;
+    border: 1px solid #2a2d31;
+    border-radius: 10px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+  }
+  .log-entry {
+    padding: 6px 10px;
+    border-bottom: 1px solid #1c1f24;
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    gap: 8px;
+    align-items: center;
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry .t { color: #6b7076; }
+  .log-entry .msg.on { color: #6fcf73; }
+  .log-entry .msg.off { color: #f2b94b; }
+  .log-entry .msg.info { color: #8ab4f8; }
+  .log-entry .lat { text-align: right; color: #9aa0a6; }
+
+  .status-line {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #9aa0a6;
+    min-height: 16px;
+  }
+
+  .fs-btn {
+    padding: 3px 8px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .fs-exit {
+    display: none;
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 5;
+  }
+
+  .stats-panel {
+    position: absolute;
+    left: 8px; top: 40px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #fff;
+    background: rgba(0,0,0,0.55);
+    padding: 6px 9px;
+    border-radius: 8px;
+    z-index: 4;
+    max-width: 78%;
+  }
+  .stats-panel .row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stats-panel .label { color: #9aa0a6; }
+
+  .camera-box:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    aspect-ratio: unset;
+    border-radius: 0;
+    border: none;
+  }
+  .camera-box:fullscreen video { object-fit: contain; }
+  .camera-box:fullscreen .fs-exit { display: block; }
+  .camera-box:fullscreen .fs-btn { display: none; }
+  .camera-box:fullscreen .overlay,
+  .camera-box:fullscreen .badge-row { font-size: 15px; }
+  .camera-box:fullscreen .stats-panel { font-size: 14px; max-width: 90%; }
+
+  .move-slowly {
+    display: none;
+    position: absolute;
+    top: 44px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(210, 60, 30, 0.9);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 6px 14px;
+    border-radius: 20px;
+    z-index: 4;
+  }
+  .move-slowly.visible { display: block; }
+
+  .rec-indicator {
+    display: none;
+    position: absolute;
+    top: 10px; left: 10px;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    z-index: 4;
+  }
+  .rec-indicator.visible { display: flex; }
+  .rec-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #e83b3b;
+    animation: rec-pulse 1s infinite;
+  }
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .record-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .record-row button {
+    flex: 1;
+  }
+  .record-row .rec-count {
+    font-size: 12px;
+    color: #9aa0a6;
+    white-space: nowrap;
+  }
+  button.recording {
+    background: #b23a3a;
+    border-color: #b23a3a;
+  }
+
+  .preview-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 50;
+    overflow-y: auto;
+  }
+  .preview-modal.visible { display: block; }
+  .preview-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(11,13,16,0.95);
+    border-bottom: 1px solid #2a2d31;
+  }
+  .preview-header h3 { margin: 0; font-size: 14px; color: #e6e8eb; }
+  .preview-close {
+    background: #1c1f24;
+    border: 1px solid #2a2d31;
+    color: #e6e8eb;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 16px;
+  }
+  .preview-grid img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #2a2d31;
+  }
+  .preview-empty {
+    color: #9aa0a6;
+    font-size: 13px;
+    padding: 16px;
+    text-align: center;
+  }
+  .preview-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.97);
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .preview-lightbox.visible { display: flex; }
+  .preview-lightbox img {
+    max-width: 92vw;
+    max-height: 78vh;
+    border-radius: 8px;
+  }
+  .preview-lightbox .meta {
+    color: #9aa0a6;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Auto Torch — Light Trigger</h1>
+
+  <div class="mode-row">
+    <button id="modeBrightnessBtn" class="mode-btn active">Brightness Mode</button>
+    <button id="modeContrastBtn" class="mode-btn">Contrast Mode</button>
+  </div>
+
+  <div class="camera-box" id="cameraBox">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="center-box" id="centerBox"></div>
+    <div class="badge-row">
+      <span class="badge" id="modeBadge">Brightness</span>
+      <span class="badge" id="supportBadge">torch: checking…</span>
+      <button class="badge fs-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
+    </div>
+    <div class="stats-panel" id="statsPanel">
+      <div class="row" id="statMetric"><span class="label">Brightness:</span> —</div>
+      <div class="row" id="statBlur"><span class="label">Blur:</span> — (—) <span class="label">calc:</span> — ms</div>
+      <div class="row"><span class="label">ON lat:</span> <span id="statLatOn">— ms</span> <span class="label">OFF lat:</span> <span id="statLatOff">— ms</span></div>
+      <div class="row" id="statLastOn"><span class="label">Last ON:</span> —</div>
+      <div class="row" id="statLastOff"><span class="label">Last OFF:</span> —</div>
+    </div>
+    <button class="fs-exit" id="fsExitBtn" title="Exit fullscreen">✕</button>
+    <div class="rec-indicator" id="recIndicator"><span class="rec-dot"></span><span>REC</span></div>
+    <div class="move-slowly" id="moveSlowly">Move Slowly</div>
+    <div class="overlay" id="overlay">
+      <span class="tag idle" id="overlayTag">IDLE</span><br>
+      <span id="overlayText">Waiting for camera…</span>
+    </div>
+  </div>
+
+  <div class="record-row">
+    <button id="recordBtn" disabled>Start Recording</button>
+    <span class="rec-count" id="recCount">0 / 60 frames</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Last trigger latency</div>
+      <div class="value" id="latencyOn">— ms</div>
+    </div>
+    <div class="stat">
+      <div class="label">Last close latency</div>
+      <div class="value" id="latencyOff">— ms</div>
+    </div>
+  </div>
+
+  <div id="brightnessThresholds">
+    <div class="threshold-row">
+      <span>Dark &lt;</span>
+      <input type="range" id="darkSlider" min="10" max="100" value="40">
+      <span id="darkVal">40</span>
+    </div>
+    <div class="threshold-row">
+      <span>Light &gt;</span>
+      <input type="range" id="lightSlider" min="20" max="150" value="70">
+      <span id="lightVal">70</span>
+    </div>
+  </div>
+
+  <div id="contrastThresholds" style="display:none;">
+    <div class="threshold-row">
+      <span>Backlit gap &gt;</span>
+      <input type="range" id="darkGapSlider" min="10" max="120" value="40">
+      <span id="darkGapVal">40</span>
+    </div>
+    <div class="threshold-row">
+      <span>Recovered gap &lt;</span>
+      <input type="range" id="lightGapSlider" min="5" max="80" value="15">
+      <span id="lightGapVal">15</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn" class="primary">Start Camera</button>
+    <button id="manualBtn" disabled>Manual Toggle</button>
+    <button id="clearBtn">Clear Log</button>
+  </div>
+
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="logs">
+    <h2><span>Log</span><span id="logCount">0 entries</span></h2>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<div class="preview-modal" id="previewModal">
+  <div class="preview-header">
+    <h3 id="previewTitle">Captured Frames</h3>
+    <button class="preview-close" id="previewCloseBtn">Close</button>
+  </div>
+  <div class="preview-grid" id="previewGrid"></div>
+</div>
+
+<div class="preview-lightbox" id="previewLightbox">
+  <img id="lightboxImg" src="" alt="Captured frame">
+  <div class="meta" id="lightboxMeta"></div>
+</div>
+
+<canvas id="canvas" style="display:none;"></canvas>
+<canvas id="captureCanvas" style="display:none;"></canvas>
+<canvas id="blurCanvas" style="display:none;"></canvas>
+
+<script>
+(function () {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const overlay = document.getElementById('overlay');
+  const overlayTag = document.getElementById('overlayTag');
+  const overlayText = document.getElementById('overlayText');
+  const modeBadge = document.getElementById('modeBadge');
+  const supportBadge = document.getElementById('supportBadge');
+  const centerBox = document.getElementById('centerBox');
+  const latencyOnEl = document.getElementById('latencyOn');
+  const latencyOffEl = document.getElementById('latencyOff');
+  const cameraBox = document.getElementById('cameraBox');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const fsExitBtn = document.getElementById('fsExitBtn');
+  const statMetric = document.getElementById('statMetric');
+  const statBlur = document.getElementById('statBlur');
+  const statLatOn = document.getElementById('statLatOn');
+  const statLatOff = document.getElementById('statLatOff');
+  const statLastOn = document.getElementById('statLastOn');
+  const statLastOff = document.getElementById('statLastOff');
+  const blurCanvas = document.getElementById('blurCanvas');
+  const blurCtx = blurCanvas.getContext('2d', { willReadFrequently: true });
+  const logList = document.getElementById('logList');
+  const logCount = document.getElementById('logCount');
+  const statusLine = document.getElementById('statusLine');
+  const startBtn = document.getElementById('startBtn');
+  const manualBtn = document.getElementById('manualBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const darkSlider = document.getElementById('darkSlider');
+  const lightSlider = document.getElementById('lightSlider');
+  const darkVal = document.getElementById('darkVal');
+  const lightVal = document.getElementById('lightVal');
+  const darkGapSlider = document.getElementById('darkGapSlider');
+  const lightGapSlider = document.getElementById('lightGapSlider');
+  const darkGapVal = document.getElementById('darkGapVal');
+  const lightGapVal = document.getElementById('lightGapVal');
+  const modeBrightnessBtn = document.getElementById('modeBrightnessBtn');
+  const modeContrastBtn = document.getElementById('modeContrastBtn');
+  const brightnessThresholds = document.getElementById('brightnessThresholds');
+  const contrastThresholds = document.getElementById('contrastThresholds');
+  const moveSlowly = document.getElementById('moveSlowly');
+  const recIndicator = document.getElementById('recIndicator');
+  const recordBtn = document.getElementById('recordBtn');
+  const recCount = document.getElementById('recCount');
+  const captureCanvas = document.getElementById('captureCanvas');
+  const captureCtx = captureCanvas.getContext('2d');
+  const previewModal = document.getElementById('previewModal');
+  const previewTitle = document.getElementById('previewTitle');
+  const previewGrid = document.getElementById('previewGrid');
+  const previewCloseBtn = document.getElementById('previewCloseBtn');
+  const previewLightbox = document.getElementById('previewLightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxMeta = document.getElementById('lightboxMeta');
+
+  function setLatencyOn(ms) {
+    const text = Math.round(ms) + ' ms';
+    latencyOnEl.textContent = text;
+    statLatOn.textContent = text;
+  }
+  function setLatencyOff(ms) {
+    const text = Math.round(ms) + ' ms';
+    latencyOffEl.textContent = text;
+    statLatOff.textContent = text;
+  }
+  function setLastOn(reason) {
+    lastOnReason = reason;
+    statLastOn.innerHTML = '<span class="label">Last ON:</span> ' + reason;
+  }
+  function setLastOff(reason) {
+    lastOffReason = reason;
+    statLastOff.innerHTML = '<span class="label">Last OFF:</span> ' + reason;
+  }
+
+  fullscreenBtn.addEventListener('click', () => {
+    if (!cameraBox.requestFullscreen) {
+      addLog('info', 'Fullscreen not supported on this browser.');
+      return;
+    }
+    cameraBox.requestFullscreen().catch(err => {
+      addLog('info', 'Fullscreen request failed: ' + err.message);
+    });
+  });
+  fsExitBtn.addEventListener('click', () => {
+    if (document.exitFullscreen) document.exitFullscreen();
+  });
+
+  const SAMPLE_INTERVAL_MS = 500;
+  const MAX_LOG_ENTRIES = 50;
+  const SAMPLE_W = 40, SAMPLE_H = 30;
+  const CENTER_X0 = Math.round(SAMPLE_W * 0.3), CENTER_X1 = Math.round(SAMPLE_W * 0.7);
+  const CENTER_Y0 = Math.round(SAMPLE_H * 0.3), CENTER_Y1 = Math.round(SAMPLE_H * 0.7);
+  const MIN_ON_DURATION_MS = 8000;  // torch can't be turned off before this long, even if bright — avoids self-illumination flicker
+  const MIN_OFF_DURATION_MS = 3000; // torch can't be turned back on before this long after turning off — avoids rapid re-trigger
+  const CONFIRM_SAMPLES = 3;        // metric must stay past threshold for this many consecutive samples before ON or OFF fires — filters camera auto-exposure convergence noise
+  const MAX_CAPTURED_FRAMES = 60;   // memory cap — stops keeping new frames once reached, so a long recording on an older phone doesn't bloat memory
+  const CAPTURE_MAX_WIDTH = 640;    // captured frames are downscaled to this width, not full camera resolution
+  const BLUR_SAMPLE_WIDTH = 200;    // separate, larger-than-brightness-grid grayscale sample so the Laplacian score means something
+
+  let stream = null;
+  let track = null;
+  let torchSupported = false;
+  let torchOn = false;
+  let torchOnAt = null;
+  let torchOffAt = null;
+  let confirmCount = 0;
+  let manualOverride = false;
+  let sampleTimer = null;
+  let pendingSince = null; // timestamp when threshold first crossed, for latency measurement
+  let currentMode = 'brightness'; // 'brightness' | 'contrast'
+  let isRecording = false;
+  let capturedFrames = [];
+  let capFrameLoggedFull = false;
+  let lastOnReason = '—';
+  let lastOffReason = '—';
+  let logs = [];
+
+  function classifyBlur(variance) {
+    if (variance >= 500) return 'Very Sharp';
+    if (variance >= 200) return 'Sharp';
+    if (variance >= 80) return 'Slightly Blurry';
+    if (variance >= 30) return 'Blurry';
+    return 'Very Blurry';
+  }
+
+  // Laplacian-variance blur score: low variance = few sharp edges = likely blurred/moving; high variance = crisp detail
+  function computeBlurScore() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const scale = BLUR_SAMPLE_WIDTH / vw;
+    const w = BLUR_SAMPLE_WIDTH, h = Math.round(vh * scale);
+    blurCanvas.width = w;
+    blurCanvas.height = h;
+    blurCtx.drawImage(video, 0, 0, w, h);
+    const data = blurCtx.getImageData(0, 0, w, h).data;
+
+    const gray = new Float32Array(w * h);
+    for (let p = 0; p < w * h; p++) {
+      const i = p * 4;
+      gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+
+    let sum = 0, sumSq = 0, count = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        const lap = -4 * gray[idx] + gray[idx - 1] + gray[idx + 1] + gray[idx - w] + gray[idx + w];
+        sum += lap;
+        sumSq += lap * lap;
+        count++;
+      }
+    }
+    const mean = sum / count;
+    const variance = (sumSq / count) - (mean * mean);
+    return variance;
+  }
+
+  darkSlider.addEventListener('input', () => darkVal.textContent = darkSlider.value);
+  lightSlider.addEventListener('input', () => lightVal.textContent = lightSlider.value);
+  darkGapSlider.addEventListener('input', () => darkGapVal.textContent = darkGapSlider.value);
+  lightGapSlider.addEventListener('input', () => lightGapVal.textContent = lightGapSlider.value);
+
+  function switchMode(mode) {
+    if (mode === currentMode) return;
+    currentMode = mode;
+    confirmCount = 0;
+    pendingSince = null;
+
+    const isContrast = mode === 'contrast';
+    modeBrightnessBtn.classList.toggle('active', !isContrast);
+    modeContrastBtn.classList.toggle('active', isContrast);
+    brightnessThresholds.style.display = isContrast ? 'none' : '';
+    contrastThresholds.style.display = isContrast ? '' : 'none';
+    centerBox.classList.toggle('visible', isContrast);
+    modeBadge.textContent = isContrast ? 'Contrast' : 'Brightness';
+    statMetric.innerHTML = isContrast
+      ? '<span class="label">Center:</span> — <span class="label">Surround:</span> — <span class="label">Gap:</span> —'
+      : '<span class="label">Brightness:</span> —';
+
+    addLog('info', 'Switched to ' + (isContrast ? 'Contrast' : 'Brightness') + ' mode.');
+  }
+
+  modeBrightnessBtn.addEventListener('click', () => switchMode('brightness'));
+  modeContrastBtn.addEventListener('click', () => switchMode('contrast'));
+
+  function addLog(kind, message, latencyMs) {
+    const entry = {
+      time: new Date(),
+      kind, // 'on' | 'off' | 'info'
+      message,
+      latencyMs: latencyMs != null ? Math.round(latencyMs) : null
+    };
+    logs.unshift(entry);
+    if (logs.length > MAX_LOG_ENTRIES) logs.pop();
+    renderLogs();
+  }
+
+  function renderLogs() {
+    logCount.textContent = logs.length + ' entries';
+    logList.innerHTML = logs.map(e => {
+      const t = e.time.toLocaleTimeString([], { hour12: false });
+      const lat = e.latencyMs != null ? e.latencyMs + 'ms' : '';
+      return '<div class="log-entry">' +
+        '<span class="t">' + t + '</span>' +
+        '<span class="msg ' + e.kind + '">' + e.message + '</span>' +
+        '<span class="lat">' + lat + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  clearBtn.addEventListener('click', () => {
+    logs = [];
+    renderLogs();
+  });
+
+  function setOverlay(state, text) {
+    overlay.className = 'overlay ' + state;
+    overlayTag.className = 'tag ' + state;
+    overlayTag.textContent = state === 'on' ? 'TORCH ON' : state === 'off' ? 'TORCH OFF' : 'IDLE';
+    overlayText.textContent = text;
+  }
+
+  async function startCamera() {
+    statusLine.textContent = 'Requesting camera access…';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+    } catch (err) {
+      statusLine.textContent = 'Camera error: ' + err.message;
+      addLog('info', 'Camera access failed: ' + err.message);
+      return;
+    }
+    video.srcObject = stream;
+    track = stream.getVideoTracks()[0];
+
+    const caps = (track.getCapabilities && track.getCapabilities()) || {};
+    torchSupported = !!caps.torch;
+    supportBadge.textContent = torchSupported ? 'torch: supported' : 'torch: unsupported (manual)';
+
+    startBtn.disabled = true;
+    manualBtn.disabled = false;
+    recordBtn.disabled = false;
+    statusLine.textContent = 'Camera running. Sampling every ' + SAMPLE_INTERVAL_MS + 'ms.';
+    addLog('info', 'Camera started. Torch API ' + (torchSupported ? 'available.' : 'NOT available — using manual prompt fallback.'));
+
+    setOverlay('idle', 'Monitoring ' + currentMode + '…');
+    sampleTimer = setInterval(sampleFrame, SAMPLE_INTERVAL_MS);
+  }
+
+  function sampleFrame() {
+    if (!video.videoWidth) return;
+    canvas.width = SAMPLE_W;
+    canvas.height = SAMPLE_H;
+    ctx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+    const data = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+
+    let fullSum = 0;
+    let centerSum = 0, centerCount = 0;
+    let surroundSum = 0, surroundCount = 0;
+    const pixelCount = SAMPLE_W * SAMPLE_H;
+
+    let idx = 0;
+    for (let y = 0; y < SAMPLE_H; y++) {
+      for (let x = 0; x < SAMPLE_W; x++) {
+        const i = idx * 4;
+        // perceived luminance
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        fullSum += lum;
+        const inCenter = x >= CENTER_X0 && x < CENTER_X1 && y >= CENTER_Y0 && y < CENTER_Y1;
+        if (inCenter) { centerSum += lum; centerCount++; }
+        else { surroundSum += lum; surroundCount++; }
+        idx++;
+      }
+    }
+
+    const brightness = fullSum / pixelCount;
+    const centerAvg = centerSum / centerCount;
+    const surroundAvg = surroundSum / surroundCount;
+    const gap = surroundAvg - centerAvg; // positive = center (subject) darker than surroundings = backlit/silhouette
+
+    let isDark;
+    if (currentMode === 'contrast') {
+      statMetric.innerHTML = '<span class="label">Center:</span> ' + centerAvg.toFixed(1) +
+        ' <span class="label">Surround:</span> ' + surroundAvg.toFixed(1) +
+        ' <span class="label">Gap:</span> ' + gap.toFixed(1);
+      isDark = gap > Number(darkGapSlider.value);
+      evaluateContrastTrigger(gap, centerAvg, surroundAvg);
+    } else {
+      statMetric.innerHTML = '<span class="label">Brightness:</span> ' + brightness.toFixed(1);
+      isDark = brightness < Number(darkSlider.value);
+      evaluateBrightnessTrigger(brightness);
+    }
+
+    moveSlowly.classList.toggle('visible', isDark);
+
+    const blurT0 = performance.now();
+    const blurVariance = computeBlurScore();
+    const blurLatency = performance.now() - blurT0;
+    statBlur.innerHTML = '<span class="label">Blur:</span> ' + blurVariance.toFixed(1) +
+      ' (' + classifyBlur(blurVariance) + ') <span class="label">calc:</span> ' + blurLatency.toFixed(1) + ' ms';
+
+    if (isRecording && !isDark) {
+      captureFrame(currentMode === 'contrast' ? gap : brightness);
+    }
+  }
+
+  function captureFrame(metricValue) {
+    if (capturedFrames.length >= MAX_CAPTURED_FRAMES) {
+      if (!capFrameLoggedFull) {
+        addLog('info', 'Frame cap reached (' + MAX_CAPTURED_FRAMES + ') — no further frames kept this recording.');
+        capFrameLoggedFull = true;
+      }
+      return;
+    }
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const scale = Math.min(1, CAPTURE_MAX_WIDTH / vw);
+    captureCanvas.width = Math.round(vw * scale);
+    captureCanvas.height = Math.round(vh * scale);
+    captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+    const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.75);
+    capturedFrames.push({ dataUrl, time: new Date(), metricValue, mode: currentMode });
+    recCount.textContent = capturedFrames.length + ' / ' + MAX_CAPTURED_FRAMES + ' frames';
+  }
+
+  function evaluateBrightnessTrigger(brightness) {
+    if (manualOverride) return; // user is driving manually, don't auto-fight them
+
+    const darkThreshold = Number(darkSlider.value);
+    const lightThreshold = Number(lightSlider.value);
+
+    if (!torchOn && brightness < darkThreshold) {
+      const offHeldMs = torchOffAt != null ? performance.now() - torchOffAt : Infinity;
+      if (offHeldMs < MIN_OFF_DURATION_MS) {
+        // just turned off — don't let it immediately re-trigger on a borderline reading
+        confirmCount = 0;
+        return;
+      }
+      confirmCount++;
+      if (confirmCount < CONFIRM_SAMPLES) return; // filter camera auto-exposure convergence noise
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOn('brightness ' + brightness.toFixed(1) + ' below threshold ' + darkThreshold);
+      return;
+    }
+
+    if (torchOn && brightness > lightThreshold) {
+      const onHeldMs = torchOnAt != null ? performance.now() - torchOnAt : Infinity;
+      if (onHeldMs < MIN_ON_DURATION_MS) {
+        // still in cooldown — likely reading our own torch's reflected light, not real ambient light
+        confirmCount = 0;
+        return;
+      }
+      confirmCount++;
+      if (confirmCount < CONFIRM_SAMPLES) return; // require sustained brightness before trusting it
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOff('brightness ' + brightness.toFixed(1) + ' above threshold ' + lightThreshold);
+      return;
+    }
+
+    confirmCount = 0;
+    pendingSince = null;
+  }
+
+  function evaluateContrastTrigger(gap) {
+    if (manualOverride) return; // user is driving manually, don't auto-fight them
+
+    const darkGapThreshold = Number(darkGapSlider.value);
+    const lightGapThreshold = Number(lightGapSlider.value);
+
+    if (!torchOn && gap > darkGapThreshold) {
+      const offHeldMs = torchOffAt != null ? performance.now() - torchOffAt : Infinity;
+      if (offHeldMs < MIN_OFF_DURATION_MS) {
+        confirmCount = 0;
+        return;
+      }
+      confirmCount++;
+      if (confirmCount < CONFIRM_SAMPLES) return; // filter camera auto-exposure convergence noise
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOn('backlit gap ' + gap.toFixed(1) + ' above threshold ' + darkGapThreshold);
+      return;
+    }
+
+    if (torchOn && gap < lightGapThreshold) {
+      const onHeldMs = torchOnAt != null ? performance.now() - torchOnAt : Infinity;
+      if (onHeldMs < MIN_ON_DURATION_MS) {
+        // still in cooldown — torch may be evening out the frame itself, not a real change in the scene
+        confirmCount = 0;
+        return;
+      }
+      confirmCount++;
+      if (confirmCount < CONFIRM_SAMPLES) return; // require sustained recovery before trusting it
+      if (pendingSince === null) pendingSince = performance.now();
+      triggerOff('gap recovered to ' + gap.toFixed(1) + ' below threshold ' + lightGapThreshold);
+      return;
+    }
+
+    confirmCount = 0;
+    pendingSince = null;
+  }
+
+  async function triggerOn(reason) {
+    const t0 = pendingSince != null ? pendingSince : performance.now();
+    setLastOn(reason);
+
+    if (torchSupported) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        const latency = performance.now() - t0;
+        torchOn = true;
+        torchOnAt = performance.now();
+        confirmCount = 0;
+        pendingSince = null;
+        setLatencyOn(latency);
+        setOverlay('on', 'Triggered: ' + reason);
+        addLog('on', 'Torch ON — ' + reason, latency);
+      } catch (err) {
+        addLog('info', 'Torch ON failed: ' + err.message);
+        pendingSince = null;
+      }
+    } else {
+      const latency = performance.now() - t0;
+      torchOn = true; // treat prompt as "active" state to avoid re-firing every sample
+      torchOnAt = performance.now();
+      confirmCount = 0;
+      pendingSince = null;
+      setLatencyOn(latency);
+      setOverlay('on', 'Triggered: ' + reason + ' — turn on your flashlight manually');
+      addLog('on', 'Prompt shown (no torch API) — ' + reason, latency);
+    }
+  }
+
+  async function triggerOff(reason) {
+    const t0 = pendingSince != null ? pendingSince : performance.now();
+    setLastOff(reason);
+
+    if (torchSupported) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: false }] });
+        const latency = performance.now() - t0;
+        torchOn = false;
+        torchOnAt = null;
+        torchOffAt = performance.now();
+        confirmCount = 0;
+        pendingSince = null;
+        setLatencyOff(latency);
+        setOverlay('off', 'Closed: ' + reason);
+        addLog('off', 'Torch OFF — ' + reason, latency);
+      } catch (err) {
+        addLog('info', 'Torch OFF failed: ' + err.message);
+        pendingSince = null;
+      }
+    } else {
+      const latency = performance.now() - t0;
+      torchOn = false;
+      torchOnAt = null;
+      torchOffAt = performance.now();
+      confirmCount = 0;
+      pendingSince = null;
+      setLatencyOff(latency);
+      setOverlay('off', 'Closed: ' + reason + ' — you can turn off your flashlight');
+      addLog('off', 'Prompt cleared (no torch API) — ' + reason, latency);
+    }
+  }
+
+  manualBtn.addEventListener('click', async () => {
+    manualOverride = !manualOverride;
+    if (manualOverride) {
+      manualBtn.textContent = 'Resume Auto';
+      addLog('info', 'Manual override engaged — auto-trigger paused.');
+      setOverlay('idle', 'Manual override — auto-trigger paused.');
+    } else {
+      manualBtn.textContent = 'Manual Toggle';
+      addLog('info', 'Manual override released — auto-trigger resumed.');
+      setOverlay('idle', 'Monitoring ' + currentMode + '…');
+    }
+  });
+
+  recordBtn.addEventListener('click', () => {
+    if (!isRecording) {
+      isRecording = true;
+      capturedFrames = [];
+      capFrameLoggedFull = false;
+      recCount.textContent = '0 / ' + MAX_CAPTURED_FRAMES + ' frames';
+      recordBtn.textContent = 'Stop Recording';
+      recordBtn.classList.add('recording');
+      recIndicator.classList.add('visible');
+      addLog('info', 'Recording started (' + currentMode + ' mode) — keeping only non-dark frames.');
+    } else {
+      isRecording = false;
+      recordBtn.textContent = 'Start Recording';
+      recordBtn.classList.remove('recording');
+      recIndicator.classList.remove('visible');
+      addLog('info', 'Recording stopped — ' + capturedFrames.length + ' frame(s) kept.');
+      openPreview();
+    }
+  });
+
+  function openPreview() {
+    previewTitle.textContent = 'Captured Frames (' + capturedFrames.length + ')';
+    if (capturedFrames.length === 0) {
+      previewGrid.innerHTML = '';
+      previewGrid.insertAdjacentHTML('afterbegin', '<div class="preview-empty">No non-dark frames were captured during this recording.</div>');
+    } else {
+      previewGrid.innerHTML = capturedFrames.map((f, i) =>
+        '<img src="' + f.dataUrl + '" data-index="' + i + '" alt="Captured frame ' + (i + 1) + '">'
+      ).join('');
+    }
+    previewModal.classList.add('visible');
+  }
+
+  previewGrid.addEventListener('click', (e) => {
+    const img = e.target.closest('img[data-index]');
+    if (!img) return;
+    const frame = capturedFrames[Number(img.dataset.index)];
+    lightboxImg.src = frame.dataUrl;
+    const metricLabel = frame.mode === 'contrast' ? 'gap ' + frame.metricValue.toFixed(1) : 'brightness ' + frame.metricValue.toFixed(1);
+    lightboxMeta.textContent = frame.time.toLocaleTimeString([], { hour12: false }) + ' — ' + frame.mode + ' — ' + metricLabel;
+    previewLightbox.classList.add('visible');
+  });
+
+  previewLightbox.addEventListener('click', () => previewLightbox.classList.remove('visible'));
+  previewCloseBtn.addEventListener('click', () => previewModal.classList.remove('visible'));
+
+  startBtn.addEventListener('click', startCamera);
+})();
+</script>
+</body>
+</html>
