@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Underexposure — Capture &amp; Compare</title>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#000; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#e6e8eb; }
+
+  .stage { position:fixed; inset:0; background:#000; }
+  video { width:100%; height:100%; object-fit:cover; display:block; }
+
+  .startOverlay { position:fixed; inset:0; z-index:50; background:#0b0d10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px; text-align:center; }
+  .startOverlay h1 { font-size:18px; margin:0; }
+  .startOverlay p { font-size:13px; color:#9aa0a6; margin:0; max-width:320px; }
+  .startOverlay.hidden { display:none; }
+
+  .topbar { position:fixed; top:0; left:0; right:0; z-index:20; padding:10px 10px calc(10px + env(safe-area-inset-top,0px)); display:flex; flex-wrap:wrap; gap:6px; background:linear-gradient(to bottom, rgba(0,0,0,.75), rgba(0,0,0,0)); }
+  .pill { font-size:11px; padding:4px 9px; border-radius:20px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); color:#fff; }
+  .pill.on { background:rgba(46,124,46,.6); border-color:#3ecb5f; }
+  .pill.off { background:rgba(0,0,0,.55); }
+  .pill.warn { background:rgba(178,85,15,.6); border-color:#f2b94b; }
+  .pill.flag { background:rgba(166,38,31,.65); border-color:#e08a8a; }
+
+  .logbox { position:fixed; left:10px; z-index:20; bottom:168px; width:min(78vw,420px); max-height:110px; overflow-y:auto; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:6px 8px; font-family:"SF Mono",Consolas,monospace; font-size:10px; line-height:1.5; color:#c9cdd3; }
+  .logbox .l { color:#7fd0ff; margin-right:4px; }
+
+  .bottombar { position:fixed; left:0; right:0; bottom:0; z-index:20; padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px)); background:linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0)); display:flex; flex-direction:column; gap:8px; }
+  .exp-row { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:8px 10px; }
+  .exp-row span.lbl { font-size:11px; color:#9aa0a6; min-width:56px; }
+  .exp-row input[type=range] { flex:1; }
+  .exp-row span.val { font-size:12px; min-width:38px; text-align:right; font-variant-numeric:tabular-nums; }
+
+  .btn-row { display:flex; gap:6px; flex-wrap:wrap; }
+  button { flex:1; min-width:74px; padding:11px 6px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(28,31,36,.85); color:#e6e8eb; font-size:12px; cursor:pointer; }
+  button:active { background:rgba(38,41,47,.9); }
+  button.primary { background:#2e5cff; border-color:#2e5cff; }
+  button.torchOn { background:#b2550f; border-color:#f2b94b; }
+  button.small { flex:0 0 auto; padding:8px 10px; }
+  button:disabled { opacity:.35; }
+
+  .gallery { position:fixed; inset:0; z-index:40; background:#0b0d10; display:none; flex-direction:column; }
+  .gallery.open { display:flex; }
+  .gallery-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px calc(12px + env(safe-area-inset-top,0px)); border-bottom:1px solid #2a2d31; }
+  .gallery-head h2 { font-size:15px; margin:0; }
+  .gallery-grid { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; align-content:start; }
+  .gallery-grid::-webkit-scrollbar { width:8px; }
+  .gallery-grid::-webkit-scrollbar-thumb { background:#3a3d42; border-radius:4px; }
+  .g-item { background:#16181c; border:1px solid #2a2d31; border-radius:8px; overflow:hidden; display:flex; flex-direction:column; }
+  .g-item img { width:100%; height:120px; object-fit:cover; display:block; background:#000; cursor:pointer; }
+  .g-item .meta { padding:6px 8px; font-size:10px; color:#9aa0a6; line-height:1.5; flex:1; }
+  .g-item .meta b { color:#e6e8eb; }
+  .g-item .dl { width:100%; border-radius:0; border:none; border-top:1px solid #2a2d31; background:#1c1f24; padding:8px; font-size:11px; }
+  .empty-gallery { padding:40px 20px; text-align:center; color:#6b7076; font-size:13px; }
+
+  .lightbox { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.94); display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px calc(20px + env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) calc(20px + env(safe-area-inset-left,0px)); }
+  .lightbox.open { display:flex; }
+  .lightbox img { max-width:94vw; max-height:76vh; object-fit:contain; border-radius:6px; }
+  .lightbox button { flex:none; padding:12px 26px; }
+
+  .note-inline { font-size:10.5px; color:#f2b94b; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <video id="video" autoplay playsinline muted></video>
+</div>
+
+<div class="topbar" id="topbar">
+  <span class="pill off" id="pillTorch">Torch: —</span>
+  <span class="pill off" id="pillExp">Exposure: —</span>
+  <span class="pill off" id="pillBrightness">Brightness: —</span>
+  <span class="pill off" id="pillUnder">Underexposed: —</span>
+</div>
+
+<div class="logbox" id="logbox"></div>
+
+<div class="startOverlay" id="startOverlay">
+  <h1>Underexposure — Capture &amp; Compare</h1>
+  <p>Manual torch + manual exposure slider. Capture each state as its own frame, compare side by side after. Goes fullscreen on start.</p>
+  <button class="primary" id="startBtn" style="flex:none; padding:14px 28px;">Start Camera</button>
+</div>
+
+<div class="bottombar" id="bottombar" style="display:none;">
+  <div class="exp-row">
+    <span class="lbl">Exposure</span>
+    <input type="range" id="expSlider" min="-2" max="2" step="0.1" value="0" disabled>
+    <span class="val" id="expSliderVal">0.0</span>
+  </div>
+  <div class="exp-row" id="gammaRow">
+    <span class="lbl">Gamma</span>
+    <input type="range" id="gammaSlider" min="20" max="100" step="10" value="40">
+    <span class="val" id="gammaSliderVal">0.40</span>
+  </div>
+  <div class="btn-row">
+    <button id="torchBtn" disabled>Torch: Off</button>
+    <button id="fullscreenBtn" class="small">Fullscreen</button>
+    <button id="galleryBtn" class="small">Gallery (<span id="galleryCount">0</span>)</button>
+    <button id="exitBtn" class="small">Exit</button>
+  </div>
+  <div class="btn-row">
+    <button id="captureBtn" class="primary">Capture Frame</button>
+    <button id="captureGammaBtn">Capture + Gamma Lift</button>
+  </div>
+  <div class="note-inline" id="capNote" style="display:none;"></div>
+</div>
+
+<div class="gallery" id="gallery">
+  <div class="gallery-head">
+    <h2>Captured frames</h2>
+    <div style="display:flex; gap:6px;">
+      <button class="small" id="cleanGalleryBtn">Clean</button>
+      <button class="small" id="closeGalleryBtn">Close</button>
+    </div>
+  </div>
+  <div class="gallery-grid" id="galleryGrid"><div class="empty-gallery">No captures yet.</div></div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" src="">
+  <button id="lightboxClose">✕ Close</button>
+</div>
+
+<canvas id="sampleCanvas" style="display:none;"></canvas>
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const bottombar = document.getElementById('bottombar');
+  const pillTorch = document.getElementById('pillTorch');
+  const pillExp = document.getElementById('pillExp');
+  const pillBrightness = document.getElementById('pillBrightness');
+  const pillUnder = document.getElementById('pillUnder');
+  const logbox = document.getElementById('logbox');
+  const expSlider = document.getElementById('expSlider');
+  const expSliderVal = document.getElementById('expSliderVal');
+  const gammaSlider = document.getElementById('gammaSlider');
+  const gammaSliderVal = document.getElementById('gammaSliderVal');
+  const torchBtn = document.getElementById('torchBtn');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const galleryBtn = document.getElementById('galleryBtn');
+  const galleryCount = document.getElementById('galleryCount');
+  const exitBtn = document.getElementById('exitBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const captureGammaBtn = document.getElementById('captureGammaBtn');
+  const capNote = document.getElementById('capNote');
+  const gallery = document.getElementById('gallery');
+  const galleryGrid = document.getElementById('galleryGrid');
+  const closeGalleryBtn = document.getElementById('closeGalleryBtn');
+  const cleanGalleryBtn = document.getElementById('cleanGalleryBtn');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxClose = document.getElementById('lightboxClose');
+  const sampleCanvas = document.getElementById('sampleCanvas');
+  const sctx = sampleCanvas.getContext('2d', { willReadFrequently:true });
+  const captureCanvas = document.getElementById('captureCanvas');
+
+  const DARK_THRESHOLD = 45;
+  let stream=null, track=null, torchSupported=false, torchOn=false;
+  let expCompSupported=false, expCompRange=null, exposureValue=0;
+  let liveBrightness=null;
+  let logs=[];
+  let captures=[]; // {url, torchOn, exposure, brightness, gammaApplied, gammaValue, time}
+  let sampleTimer=null;
+
+  function addLog(msg){
+    logs.push({ t:new Date(), msg });
+    if(logs.length>60) logs.shift();
+    logbox.innerHTML = logs.slice(-6).map(e=>{
+      const t = e.t.toLocaleTimeString([],{hour12:false});
+      return '<div><span class="l">'+t+'</span>'+msg_escape(e.msg)+'</div>';
+    }).join('');
+    logbox.scrollTop = logbox.scrollHeight;
+  }
+  function msg_escape(s){ return String(s).replace(/</g,'&lt;'); }
+
+  async function startCamera(){
+    addLog('Requesting camera…');
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'} }, audio:false });
+    }catch(err){
+      addLog('Camera error: '+err.message);
+      return;
+    }
+    video.srcObject = stream;
+    track = stream.getVideoTracks()[0];
+    const caps = (track.getCapabilities && track.getCapabilities()) || {};
+    torchSupported = !!caps.torch;
+    expCompSupported = !!caps.exposureCompensation;
+    expCompRange = caps.exposureCompensation || null;
+
+    torchBtn.disabled = !torchSupported;
+    expSlider.disabled = !expCompSupported;
+    if(expCompSupported && expCompRange){
+      expSlider.min = expCompRange.min;
+      expSlider.max = expCompRange.max;
+      expSlider.step = expCompRange.step || 0.1;
+      expSlider.value = 0;
+    }
+    let noteParts = [];
+    if(!torchSupported) noteParts.push('Torch not available on this device/browser.');
+    if(!expCompSupported) noteParts.push('Exposure slider not available on this device/browser (common on iPhone).');
+    if(noteParts.length){ capNote.textContent = noteParts.join(' '); capNote.style.display='block'; }
+
+    addLog('Camera started. torch='+torchSupported+' exposureCompensation='+expCompSupported+(expCompRange?(' range=['+expCompRange.min+','+expCompRange.max+']'):''));
+
+    startOverlay.classList.add('hidden');
+    bottombar.style.display = 'flex';
+    sampleTimer = setInterval(sampleFrame, 500);
+    updatePills();
+
+    try{
+      if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else if(document.documentElement.webkitRequestFullscreen) await document.documentElement.webkitRequestFullscreen();
+    }catch(err){ addLog('Fullscreen on start failed (tap Fullscreen manually): '+err.message); }
+  }
+  startBtn.addEventListener('click', startCamera);
+
+  fullscreenBtn.addEventListener('click', async ()=>{
+    try{
+      if(!document.fullscreenElement && !document.webkitFullscreenElement){
+        if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+        else if(document.documentElement.webkitRequestFullscreen) await document.documentElement.webkitRequestFullscreen();
+      } else {
+        if(document.exitFullscreen) await document.exitFullscreen();
+        else if(document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      }
+    }catch(err){ addLog('Fullscreen toggle failed: '+err.message); }
+  });
+
+  torchBtn.addEventListener('click', async ()=>{
+    if(!track || !torchSupported) return;
+    const want = !torchOn;
+    try{
+      await track.applyConstraints({ advanced:[{ torch:want }] });
+      const actual = track.getSettings ? track.getSettings().torch : undefined;
+      torchOn = !!actual;
+      addLog('Torch requested='+want+' actual='+actual+' '+(actual===want?'[CONFIRMED]':'[NOT CONFIRMED]'));
+    }catch(err){ addLog('Torch set failed: '+err.message); }
+    updatePills();
+  });
+
+  expSlider.addEventListener('input', async ()=>{
+    exposureValue = Number(expSlider.value);
+    expSliderVal.textContent = exposureValue.toFixed(1);
+    if(!track || !expCompSupported) return;
+    try{
+      await track.applyConstraints({ advanced:[{ exposureCompensation: exposureValue }] });
+    }catch(err){ addLog('exposureCompensation set failed: '+err.message); }
+  });
+  expSlider.addEventListener('change', async ()=>{
+    if(!track || !expCompSupported) return;
+    const actual = track.getSettings ? track.getSettings().exposureCompensation : undefined;
+    addLog('exposureCompensation requested='+exposureValue+' actual='+actual+' '+(actual===exposureValue?'[CONFIRMED]':'[NOT CONFIRMED]'));
+  });
+
+  gammaSlider.addEventListener('input', ()=>{ gammaSliderVal.textContent = (gammaSlider.value/100).toFixed(2); });
+
+  function updatePills(){
+    pillTorch.textContent = 'Torch: ' + (torchSupported ? (torchOn?'ON':'OFF') : 'n/a');
+    pillTorch.className = 'pill ' + (torchSupported ? (torchOn?'on':'off') : 'warn');
+    pillExp.textContent = 'Exposure: ' + (expCompSupported ? (exposureValue>0?'+':'')+exposureValue.toFixed(1) : 'n/a');
+    pillExp.className = 'pill ' + (expCompSupported ? 'off' : 'warn');
+  }
+
+  function sampleFrame(){
+    if(!video.videoWidth) return;
+    const W=40,H=30;
+    sampleCanvas.width=W; sampleCanvas.height=H;
+    sctx.drawImage(video,0,0,W,H);
+    const data = sctx.getImageData(0,0,W,H).data;
+    let sum=0;
+    for(let i=0;i<data.length;i+=4) sum += 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+    liveBrightness = sum/(W*H);
+    pillBrightness.textContent = 'Brightness: ' + liveBrightness.toFixed(1);
+    const isUnder = liveBrightness < DARK_THRESHOLD;
+    pillUnder.textContent = 'Underexposed: ' + (isUnder?'YES':'no');
+    pillUnder.className = 'pill ' + (isUnder?'flag':'off');
+    updatePills();
+  }
+
+  function meanBrightnessOf(imageData){
+    const d = imageData.data; let sum=0, n=0;
+    for(let i=0;i<d.length;i+=4){ sum += 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; n++; }
+    return n?sum/n:0;
+  }
+
+  function doCapture(applyGamma){
+    if(!video.videoWidth){ addLog('No frame yet.'); return; }
+    const w = video.videoWidth, h = video.videoHeight;
+    captureCanvas.width = w; captureCanvas.height = h;
+    const cctx = captureCanvas.getContext('2d', { willReadFrequently:true });
+    cctx.drawImage(video,0,0,w,h);
+
+    let imgData = cctx.getImageData(0,0,w,h);
+    let brightness = meanBrightnessOf(imgData);
+    let gammaUsed = null;
+
+    if(applyGamma){
+      gammaUsed = gammaSlider.value/100;
+      const out = new ImageData(new Uint8ClampedArray(imgData.data), w, h);
+      for(let i=0;i<out.data.length;i+=4){
+        out.data[i]   = 255*Math.pow(imgData.data[i]/255, gammaUsed);
+        out.data[i+1] = 255*Math.pow(imgData.data[i+1]/255, gammaUsed);
+        out.data[i+2] = 255*Math.pow(imgData.data[i+2]/255, gammaUsed);
+      }
+      cctx.putImageData(out,0,0);
+      imgData = out;
+      brightness = meanBrightnessOf(out);
+    }
+
+    // burn a label bar onto the bottom of the image so the state travels with the file
+    const barH = Math.max(56, Math.round(h*0.055));
+    cctx.fillStyle = 'rgba(0,0,0,0.72)';
+    cctx.fillRect(0, h-barH, w, barH);
+    cctx.fillStyle = '#ffffff';
+    const fontSize = Math.max(16, Math.round(barH*0.32));
+    cctx.font = fontSize+'px -apple-system, Arial, sans-serif';
+    cctx.textBaseline = 'top';
+    const line1 = 'TORCH: ' + (torchSupported ? (torchOn?'ON':'OFF') : 'N/A') +
+                  '   EXPOSURE: ' + (expCompSupported ? (exposureValue>=0?'+':'')+exposureValue.toFixed(1) : 'N/A') +
+                  (gammaUsed!=null ? ('   POST-PROCESSED: gamma '+gammaUsed.toFixed(2)) : '');
+    const line2 = 'BRIGHTNESS: ' + brightness.toFixed(1) + '   ' + new Date().toLocaleString();
+    cctx.fillText(line1, 10, h-barH+6);
+    cctx.fillText(line2, 10, h-barH+6+fontSize+4);
+
+    const url = captureCanvas.toDataURL('image/png');
+    const entry = {
+      url, torchOn: torchSupported?torchOn:null, exposure: expCompSupported?exposureValue:null,
+      brightness, gammaApplied: applyGamma, gammaValue: gammaUsed, time: new Date()
+    };
+    captures.push(entry);
+    galleryCount.textContent = captures.length;
+    addLog('Captured '+(applyGamma?'(+gamma '+gammaUsed.toFixed(2)+') ':'')+'— torch='+entry.torchOn+' exp='+entry.exposure+' brightness='+brightness.toFixed(1));
+    renderGallery();
+  }
+
+  captureBtn.addEventListener('click', ()=> doCapture(false));
+  captureGammaBtn.addEventListener('click', ()=> doCapture(true));
+
+  function renderGallery(){
+    if(captures.length===0){ galleryGrid.innerHTML = '<div class="empty-gallery">No captures yet.</div>'; return; }
+    galleryGrid.innerHTML = captures.map((c,i)=>{
+      const label = 'Torch: '+(c.torchOn===null?'n/a':(c.torchOn?'ON':'OFF'))+
+        '<br>Exposure: '+(c.exposure===null?'n/a':((c.exposure>=0?'+':'')+c.exposure.toFixed(1)))+
+        (c.gammaApplied ? ('<br>Post-processed: gamma '+c.gammaValue.toFixed(2)) : '') +
+        '<br>Brightness: '+c.brightness.toFixed(1)+
+        '<br>'+c.time.toLocaleTimeString([],{hour12:false});
+      return '<div class="g-item">'+
+        '<img src="'+c.url+'" data-idx="'+i+'">'+
+        '<div class="meta"><b>Capture '+(i+1)+'</b><br>'+label+'</div>'+
+        '<button class="dl" data-idx="'+i+'">Download</button>'+
+        '</div>';
+    }).join('');
+    galleryGrid.querySelectorAll('img').forEach(img=>{
+      img.addEventListener('click', ()=>{
+        const idx = Number(img.dataset.idx);
+        lightboxImg.src = captures[idx].url;
+        lightbox.classList.add('open');
+      });
+    });
+    galleryGrid.querySelectorAll('.dl').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = Number(btn.dataset.idx);
+        const c = captures[idx];
+        const a = document.createElement('a');
+        const tag = 'torch-'+(c.torchOn===null?'na':(c.torchOn?'ON':'OFF'))+
+          '_exp-'+(c.exposure===null?'na':c.exposure.toFixed(1))+
+          (c.gammaApplied?'_gamma-'+c.gammaValue.toFixed(2):'');
+        a.href = c.url;
+        a.download = 'underexposure_'+tag+'_'+c.time.toISOString().replace(/[:.]/g,'-')+'.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        addLog('Downloaded capture '+(idx+1));
+      });
+    });
+  }
+
+  galleryBtn.addEventListener('click', ()=>{ gallery.classList.add('open'); });
+  closeGalleryBtn.addEventListener('click', ()=>{ gallery.classList.remove('open'); });
+
+  lightboxClose.addEventListener('click', ()=>{ lightbox.classList.remove('open'); lightboxImg.src=''; });
+
+  cleanGalleryBtn.addEventListener('click', ()=>{
+    captures = [];
+    galleryCount.textContent = 0;
+    renderGallery();
+    addLog('Gallery cleaned — all captures cleared.');
+  });
+
+  exitBtn.addEventListener('click', async ()=>{
+    if(track) track.stop();
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    clearInterval(sampleTimer);
+    video.srcObject = null;
+    stream = null; track = null;
+    torchOn = false; exposureValue = 0;
+    bottombar.style.display = 'none';
+    gallery.classList.remove('open');
+    lightbox.classList.remove('open');
+    startOverlay.classList.remove('hidden');
+    addLog('Session exited — camera stopped. Captures kept, use Clean to wipe them.');
+    try{
+      if(document.fullscreenElement) await document.exitFullscreen();
+      else if(document.webkitFullscreenElement) await document.webkitExitFullscreen();
+    }catch(err){}
+  });
+
+  document.addEventListener('fullscreenchange', ()=>{
+    fullscreenBtn.textContent = document.fullscreenElement ? 'Exit FS' : 'Fullscreen';
+  });
+})();
+</script>
+</body>
+</html>
