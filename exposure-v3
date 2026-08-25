@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Exposure v3 — Manual / Android</title>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#000;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#e6e8eb; }
+
+  .stage { position:fixed; inset:0; background:#000; }
+  video { width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* ---- light surfaces (non-viewfinder) ---- */
+  .sheet { position:fixed; inset:0; z-index:60; background:#F7F8F9; color:#16191D;
+    display:none; flex-direction:column; overflow-y:auto; padding:18px; }
+  .sheet.open { display:flex; }
+  .sheet h2 { font-size:16px; margin:0 0 14px; display:flex; justify-content:space-between; align-items:center; }
+  .sheet .row { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 0; border-bottom:1px solid #E2E5E9; font-size:13px; }
+  .sheet .row .sub { display:block; font-size:10.5px; color:#6B7280; margin-top:3px; }
+  .sheet input { width:110px; padding:7px 9px; border-radius:6px; border:1px solid #D8DCE1;
+    background:#fff; color:#16191D; font-size:12px; }
+  .sheet .wide { width:100%; }
+  .closeX { width:32px; height:32px; border-radius:8px; border:1px solid #D8DCE1;
+    background:#fff; color:#16191D; font-size:15px; cursor:pointer; }
+  .caps { font-family:"Roboto Mono",Consolas,monospace; font-size:11px; background:#fff;
+    border:1px solid #D8DCE1; border-radius:8px; padding:10px; white-space:pre-wrap;
+    line-height:1.6; color:#16191D; margin-top:10px; }
+
+  .startOverlay { position:fixed; inset:0; z-index:50; background:#F7F8F9; color:#16191D;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    padding:24px; text-align:center; }
+  .startOverlay.hidden { display:none; }
+  .startOverlay h1 { font-size:19px; margin:0; }
+  .startOverlay p { font-size:13px; color:#5A6472; margin:0; max-width:400px; line-height:1.55; }
+  button.big { padding:14px 30px; border-radius:10px; border:1px solid #2e5cff;
+    background:#2e5cff; color:#fff; font-size:14px; cursor:pointer; }
+
+  .orientWarn { position:fixed; inset:0; z-index:80; background:#F7F8F9; color:#16191D;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    text-align:center; padding:24px; }
+  @media (orientation: portrait) { .orientWarn.active { display:flex; } }
+
+  /* ---- viewfinder chrome (translucent over live video) ---- */
+  .ui { display:none; }
+  .ui.show { display:block; }
+  .ui.clean .chromeEl { display:none !important; }
+
+  .topbar { position:fixed; top:0; left:0; right:0; z-index:20;
+    padding:8px 10px calc(8px + env(safe-area-inset-top,0px));
+    background:linear-gradient(to bottom, rgba(0,0,0,.8), rgba(0,0,0,0));
+    display:flex; align-items:flex-start; gap:8px; }
+  .readouts { display:flex; gap:5px; flex:1; flex-wrap:wrap; }
+  .pill { font-size:11px; padding:4px 9px; border-radius:20px; background:rgba(0,0,0,.6);
+    border:1px solid rgba(255,255,255,.16); white-space:nowrap;
+    font-family:"Roboto Mono",Consolas,monospace; }
+  .pill b { color:#8ab4f8; font-weight:600; }
+  .pill.warn { background:rgba(178,85,15,.72); border-color:#f2b94b; }
+  .pill.bad  { background:rgba(166,38,31,.72); border-color:#e08a8a; }
+  .pill.good { background:rgba(31,122,92,.6); border-color:#5fd0a8; }
+  .iconBtn { flex:none; width:32px; height:32px; border-radius:8px;
+    border:1px solid rgba(255,255,255,.16); background:rgba(0,0,0,.55); color:#fff;
+    font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+  .leftEdge { position:fixed; left:8px; top:50%; transform:translateY(-50%); z-index:20;
+    display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .torchBtn { width:58px; height:58px; border-radius:50%; border:1px solid rgba(255,255,255,.22);
+    background:rgba(0,0,0,.55); color:#fff; font-size:11px; line-height:1.3; cursor:pointer; }
+  .torchBtn.on { background:#b2550f; border-color:#f2b94b; }
+  .torchBtn:disabled { opacity:.35; }
+
+  /* ---- exposure lever with applied-vs-requested track ---- */
+  .rightEdge { position:fixed; right:6px; top:50%; transform:translateY(-50%); z-index:20;
+    display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .expHead { font-size:10px; color:#c9cdd3; letter-spacing:.08em; }
+  .levers { display:flex; align-items:center; gap:4px; }
+  .track { position:relative; width:16px; height:210px; border-radius:8px;
+    background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.16); overflow:hidden; }
+  .trackZero { position:absolute; left:0; right:0; height:1px; background:rgba(255,255,255,.35); }
+  .markReq { position:absolute; left:0; right:0; height:3px; background:#8ab4f8; }
+  .markApp { position:absolute; left:0; right:0; height:3px; background:#5fd0a8; }
+  .track.diverged .markApp { background:#f2b94b; }
+  .track.saturated { border-color:#e08a8a; box-shadow:inset 0 0 0 1px #e08a8a; }
+  .expWrap { width:44px; height:210px; display:flex; align-items:center; justify-content:center; }
+  .expWrap input[type=range] { width:200px; transform:rotate(-90deg); }
+  .expReadout { font-size:10.5px; font-family:"Roboto Mono",Consolas,monospace;
+    background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.16); border-radius:6px;
+    padding:4px 7px; text-align:center; min-width:96px; line-height:1.55; }
+  .expReadout .req { color:#8ab4f8; }
+  .expReadout .app { color:#5fd0a8; }
+  .expReadout .app.diverged { color:#f2b94b; }
+  .satBadge { font-size:9.5px; padding:3px 7px; border-radius:5px; text-align:center;
+    background:rgba(166,38,31,.75); border:1px solid #e08a8a; display:none; }
+  .satBadge.show { display:block; }
+
+  .logbox { position:fixed; left:78px; right:120px; z-index:15; bottom:56px; max-height:70px;
+    overflow-y:auto; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.1);
+    border-radius:8px; padding:5px 9px; font-family:"Roboto Mono",Consolas,monospace;
+    font-size:9.5px; line-height:1.55; color:#c9cdd3; }
+
+  .bottombar { position:fixed; left:0; right:0; bottom:0; z-index:20;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));
+    background:linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
+    display:flex; gap:6px; justify-content:center; }
+  .bottombar button { padding:10px 14px; border-radius:10px;
+    border:1px solid rgba(255,255,255,.16); background:rgba(28,31,36,.88); color:#e6e8eb;
+    font-size:12px; cursor:pointer; }
+  .bottombar button.primary { background:#2e5cff; border-color:#2e5cff; }
+
+  .gallery-grid { flex:1; display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+    gap:10px; align-content:start; margin-top:8px; }
+  .g-item { background:#fff; border:1px solid #D8DCE1; border-radius:8px; overflow:hidden;
+    display:flex; flex-direction:column; }
+  .g-item img { width:100%; height:115px; object-fit:cover; cursor:pointer; background:#111; }
+  .g-item .meta { padding:7px 9px; font-size:10px; color:#5A6472; line-height:1.6;
+    font-family:"Roboto Mono",Consolas,monospace; }
+  .g-item .meta b { color:#16191D; }
+  .empty { padding:34px; text-align:center; color:#6B7280; font-size:13px; }
+
+  .lightbox { position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.95); display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
+  .lightbox.open { display:flex; }
+  .lightbox img { max-width:94vw; max-height:76vh; object-fit:contain; border-radius:6px; }
+
+  .note { font-size:11px; color:#8a5a00; background:#FFF7E6; border:1px solid #F0DCA8;
+    border-radius:6px; padding:9px 11px; margin-top:12px; line-height:1.55; }
+</style>
+</head>
+<body>
+
+<div class="stage"><video id="video" autoplay playsinline muted></video></div>
+
+<div class="orientWarn" id="orientWarn">
+  <h2>Rotate to landscape</h2>
+  <p>Built for landscape so both levers stay in thumb reach.</p>
+</div>
+
+<div class="startOverlay" id="startOverlay">
+  <h1>Exposure v3 — Manual</h1>
+  <p>Android only. Manual levers with live readback of what the device actually applied,
+     plus AE's own contribution and estimated natural brightness.</p>
+  <button class="big" id="startBtn">Start camera</button>
+</div>
+
+<div class="ui" id="ui">
+  <div class="topbar chromeEl">
+    <div class="readouts">
+      <span class="pill" id="pillBright">measured <b>—</b></span>
+      <span class="pill" id="pillNatural">natural <b>—</b></span>
+      <span class="pill" id="pillAE">AE gain <b>—</b></span>
+      <span class="pill" id="pillIso">ISO <b>—</b></span>
+      <span class="pill" id="pillTime">shutter <b>—</b></span>
+      <span class="pill" id="pillClip">clip <b>—</b></span>
+    </div>
+    <button class="iconBtn" id="calibBtn" title="Set reference">⌾</button>
+    <button class="iconBtn" id="settingsBtn" title="Settings">⚙</button>
+    <button class="iconBtn" id="cleanBtn" title="Clean view">👁</button>
+  </div>
+
+  <div class="leftEdge chromeEl">
+    <button class="torchBtn" id="torchBtn" disabled>Torch<br>OFF</button>
+  </div>
+
+  <div class="rightEdge chromeEl">
+    <div class="expHead">EXPOSURE</div>
+    <div class="levers">
+      <div class="track" id="track">
+        <div class="trackZero" id="trackZero"></div>
+        <div class="markReq" id="markReq"></div>
+        <div class="markApp" id="markApp"></div>
+      </div>
+      <div class="expWrap">
+        <input type="range" id="expSlider" min="-2" max="2" step="0.1" value="0" disabled>
+      </div>
+    </div>
+    <div class="expReadout">
+      <div>req <span class="req" id="expReq">+0.00</span></div>
+      <div>dev <span class="app" id="expApp">—</span></div>
+    </div>
+    <div class="satBadge" id="satBadge">AT LIMIT</div>
+  </div>
+
+  <div class="logbox chromeEl" id="logbox"></div>
+
+  <div class="bottombar chromeEl">
+    <button id="captureBtn" class="primary">Capture</button>
+    <button id="sweepBtn">Auto sweep</button>
+    <button id="galleryBtn">Gallery (<span id="galleryCount">0</span>)</button>
+    <button id="csvBtn">CSV</button>
+    <button id="exitBtn">Exit</button>
+  </div>
+</div>
+
+<div class="sheet" id="settingsSheet">
+  <h2>Settings <button class="closeX" id="closeSettings">✕</button></h2>
+  <div class="row">
+    <span>Gamma<span class="sub">Exponent used to linearise the 0–255 luma before dividing out gain. 2.2 is the sRGB approximation.</span></span>
+    <input type="number" step="0.05" id="setGamma" value="2.2">
+  </div>
+  <div class="row">
+    <span>Reference ISO<span class="sub">AE gain is measured against this. Set it from a good-daylight frame using the ⌾ button.</span></span>
+    <input type="number" step="1" id="setIsoRef" value="100">
+  </div>
+  <div class="row">
+    <span>Reference shutter (µs)<span class="sub">Exposure time at the reference. 8333 µs is 1/120 s.</span></span>
+    <input type="number" step="1" id="setTimeRef" value="8333">
+  </div>
+  <div class="row">
+    <span>Settle delay (ms)<span class="sub">Wait after changing a lever before trusting a reading. AE needs time to re-converge.</span></span>
+    <input type="number" step="50" id="setSettle" value="900">
+  </div>
+  <div class="row">
+    <span>Saturation slope<span class="sub">Brightness units per stop below which the lever counts as dead. Drives the AT LIMIT badge.</span></span>
+    <input type="number" step="0.5" id="setSatSlope" value="2">
+  </div>
+  <div class="caps" id="capsDump">Camera not started.</div>
+  <div class="note">Natural brightness is an estimate, not a measurement. If ISO and shutter read
+    back, it divides out both AE gain and your compensation. If they do not, it can only divide out
+    your compensation and the AE column shows n/a — treat that number as a floor, not a truth.</div>
+</div>
+
+<div class="sheet" id="gallerySheet">
+  <h2>Captures
+    <span style="display:flex;gap:8px;">
+      <button class="closeX" id="clearGallery" style="width:auto;padding:0 12px;font-size:12px;">Clear</button>
+      <button class="closeX" id="closeGallery">✕</button>
+    </span>
+  </h2>
+  <div class="gallery-grid" id="galleryGrid"><div class="empty">No captures yet.</div></div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" src="">
+  <button class="big" id="lightboxClose">Close</button>
+</div>
+
+<canvas id="sampleCanvas" style="display:none;"></canvas>
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const video=$('video'), orientWarn=$('orientWarn'), startOverlay=$('startOverlay'),
+        startBtn=$('startBtn'), ui=$('ui'), torchBtn=$('torchBtn'), expSlider=$('expSlider'),
+        track_=$('track'), trackZero=$('trackZero'), markReq=$('markReq'), markApp=$('markApp'),
+        expReq=$('expReq'), expApp=$('expApp'), satBadge=$('satBadge'), logbox=$('logbox'),
+        pillBright=$('pillBright'), pillNatural=$('pillNatural'), pillAE=$('pillAE'),
+        pillIso=$('pillIso'), pillTime=$('pillTime'), pillClip=$('pillClip'),
+        settingsSheet=$('settingsSheet'), gallerySheet=$('gallerySheet'),
+        galleryGrid=$('galleryGrid'), galleryCount=$('galleryCount'),
+        lightbox=$('lightbox'), lightboxImg=$('lightboxImg'), capsDump=$('capsDump'),
+        sampleCanvas=$('sampleCanvas'), captureCanvas=$('captureCanvas');
+  const sctx = sampleCanvas.getContext('2d',{willReadFrequently:true});
+
+  const cfg = { gamma:2.2, isoRef:100, timeRef:8333, settleMs:900, satSlope:2 };
+  [['setGamma','gamma'],['setIsoRef','isoRef'],['setTimeRef','timeRef'],
+   ['setSettle','settleMs'],['setSatSlope','satSlope']].forEach(([id,key])=>{
+    $(id).addEventListener('change',()=>{ const v=Number($(id).value);
+      if(!isNaN(v)){ cfg[key]=v; log('cfg '+key+' -> '+v); } });
+  });
+
+  let stream=null, vtrack=null, caps={}, torchSupported=false, expSupported=false, expRange=null;
+  let torchOn=false, reqExp=0, appExp=null, sampleTimer=null;
+  let captures=[], logs=[], sweeping=false;
+  // response tracking: [{ev, brightness}] used to work out brightness-per-stop
+  let lastPoint=null, slope=null, saturated=false;
+
+  function log(m){
+    logs.push(new Date().toLocaleTimeString([],{hour12:false})+' '+m);
+    if(logs.length>60) logs.shift();
+    logbox.innerHTML = logs.slice(-5).map(l=>'<div>'+l.replace(/</g,'&lt;')+'</div>').join('');
+    logbox.scrollTop = logbox.scrollHeight;
+  }
+
+  // ---------- camera ----------
+  startBtn.addEventListener('click', async ()=>{
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:{ideal:'environment'}, width:{ideal:3840}, height:{ideal:2160} },
+        audio:false });
+    }catch(e){ log('camera error '+e.message); alert('Camera error: '+e.message); return; }
+    video.srcObject = stream;
+    vtrack = stream.getVideoTracks()[0];
+    caps = (vtrack.getCapabilities && vtrack.getCapabilities()) || {};
+    torchSupported = !!caps.torch;
+    expSupported = !!caps.exposureCompensation;
+    expRange = caps.exposureCompensation || null;
+
+    torchBtn.disabled = !torchSupported;
+    expSlider.disabled = !expSupported;
+    if(expSupported && expRange){
+      expSlider.min = expRange.min; expSlider.max = expRange.max;
+      expSlider.step = expRange.step || 0.1;
+    }
+    capsDump.textContent = JSON.stringify({
+      torch: caps.torch, exposureMode: caps.exposureMode,
+      exposureCompensation: caps.exposureCompensation,
+      exposureTime: caps.exposureTime, iso: caps.iso,
+      whiteBalanceMode: caps.whiteBalanceMode
+    }, null, 2);
+
+    // AE must stay in continuous mode — we are measuring what it does, not replacing it
+    if(caps.exposureMode && caps.exposureMode.indexOf('continuous')>-1){
+      try{ await vtrack.applyConstraints({advanced:[{exposureMode:'continuous'}]}); }catch(e){}
+    }
+
+    startOverlay.classList.add('hidden');
+    ui.classList.add('show');
+    drawZero();
+    updateExpMarks();
+    sampleTimer = setInterval(tick, 400);
+    log('camera up · torch='+torchSupported+' expComp='+expSupported+
+        (expRange?(' ['+expRange.min+'..'+expRange.max+'] step '+expRange.step):'')+
+        ' iso='+(!!caps.iso)+' shutter='+(!!caps.exposureTime));
+    try{ await document.documentElement.requestFullscreen(); }catch(e){}
+  });
+
+  // ---------- levers ----------
+  async function setTorch(on){
+    if(!vtrack || !torchSupported) return;
+    try{
+      await vtrack.applyConstraints({ advanced:[{ torch:on }] });
+      torchOn = !!(vtrack.getSettings ? vtrack.getSettings().torch : on);
+      torchBtn.classList.toggle('on', torchOn);
+      torchBtn.innerHTML = 'Torch<br>'+(torchOn?'ON':'OFF');
+      lastPoint = null; slope = null; setSat(false); // torch changes the scene, response history is void
+      log('torch -> '+torchOn);
+    }catch(e){ log('torch failed '+e.message); }
+  }
+
+  // Sets compensation, then reads back what the device actually applied.
+  // Requested and applied are tracked separately — a device that refuses to go further
+  // will keep returning the same applied value while requested keeps climbing.
+  async function setExp(v){
+    if(!vtrack || !expSupported) return;
+    const clamped = expRange ? Math.max(expRange.min, Math.min(expRange.max, v)) : v;
+    reqExp = clamped;
+    try{
+      await vtrack.applyConstraints({ advanced:[{ exposureCompensation:clamped }] });
+      const s = vtrack.getSettings ? vtrack.getSettings() : {};
+      appExp = (s.exposureCompensation !== undefined) ? s.exposureCompensation : null;
+      const diverged = appExp !== null && Math.abs(appExp - clamped) > 1e-3;
+      log('exp req '+clamped.toFixed(2)+' · dev '+
+          (appExp===null?'unreadable':appExp.toFixed(2))+(diverged?' CLAMPED':''));
+    }catch(e){ appExp=null; log('exp failed '+e.message); }
+    updateExpMarks();
+  }
+
+  torchBtn.addEventListener('click', ()=> setTorch(!torchOn));
+  expSlider.addEventListener('input', ()=>{ if(!sweeping) setExp(Number(expSlider.value)); });
+
+  function drawZero(){
+    if(!expRange) return;
+    const pct = (expRange.max - 0) / (expRange.max - expRange.min);
+    trackZero.style.top = (pct*100)+'%';
+  }
+  function evToPct(ev){
+    if(!expRange) return 50;
+    return ((expRange.max - ev) / (expRange.max - expRange.min)) * 100;
+  }
+  function updateExpMarks(){
+    expReq.textContent = (reqExp>=0?'+':'')+reqExp.toFixed(2);
+    markReq.style.top = evToPct(reqExp)+'%';
+    if(appExp === null){
+      expApp.textContent = 'n/a';
+      expApp.classList.remove('diverged');
+      markApp.style.display = 'none';
+      track_.classList.remove('diverged');
+    } else {
+      const diverged = Math.abs(appExp - reqExp) > 1e-3;
+      expApp.textContent = (appExp>=0?'+':'')+appExp.toFixed(2);
+      expApp.classList.toggle('diverged', diverged);
+      markApp.style.display = 'block';
+      markApp.style.top = evToPct(appExp)+'%';
+      track_.classList.toggle('diverged', diverged);
+    }
+  }
+  function setSat(on){
+    saturated = on;
+    satBadge.classList.toggle('show', on);
+    track_.classList.toggle('saturated', on);
+  }
+
+  // ---------- sampling ----------
+  const SW=320, SH=320;
+  function sample(){
+    if(!video.videoWidth) return null;
+    sampleCanvas.width=SW; sampleCanvas.height=SH;
+    sctx.drawImage(video,0,0,SW,SH);
+    const d = sctx.getImageData(0,0,SW,SH).data;
+    let sum=0, clip=0;
+    const n = SW*SH;
+    for(let i=0;i<d.length;i+=4){
+      const l = 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+      sum += l; if(l>=240) clip++;
+    }
+    return { brightness:sum/n, clipPct:(clip/n)*100 };
+  }
+
+  // AE's own contribution in stops, relative to the reference exposure.
+  // This is the number that answers "how much is the camera already doing".
+  function aeStops(){
+    const s = vtrack && vtrack.getSettings ? vtrack.getSettings() : {};
+    if(s.iso === undefined || s.exposureTime === undefined) return null;
+    const cur = s.iso * s.exposureTime;
+    const ref = cfg.isoRef * cfg.timeRef;
+    if(!(cur>0) || !(ref>0)) return null;
+    return Math.log2(cur/ref);
+  }
+
+  // natural = 255 * ( (B/255)^gamma / 2^totalStops )^(1/gamma)
+  // which reduces to B / 2^(totalStops/gamma)
+  function naturalBrightness(B, totalStops){
+    return B / Math.pow(2, totalStops/cfg.gamma);
+  }
+
+  function tick(){
+    const s = sample();
+    if(!s) return;
+    const st = vtrack && vtrack.getSettings ? vtrack.getSettings() : {};
+    const ae = aeStops();
+    const ev = (appExp !== null) ? appExp : reqExp;
+    const total = ev + (ae === null ? 0 : ae);
+    const nat = naturalBrightness(s.brightness, total);
+
+    pillBright.innerHTML = 'measured <b>'+s.brightness.toFixed(1)+'</b>';
+    pillNatural.innerHTML = 'natural <b>'+nat.toFixed(1)+'</b>'+(ae===null?' <span style="opacity:.6">(comp only)</span>':'');
+    pillNatural.className = 'pill' + (nat<40?' bad':(nat<60?' warn':' good'));
+    pillAE.innerHTML = 'AE gain <b>'+(ae===null?'n/a':((ae>=0?'+':'')+ae.toFixed(2)+' st'))+'</b>';
+    pillIso.innerHTML = 'ISO <b>'+(st.iso!==undefined?st.iso:'n/a')+'</b>';
+    pillTime.innerHTML = 'shutter <b>'+(st.exposureTime!==undefined?fmtShutter(st.exposureTime):'n/a')+'</b>';
+    pillClip.innerHTML = 'clip <b>'+s.clipPct.toFixed(1)+'%</b>';
+    pillClip.className = 'pill' + (s.clipPct>8?' bad':'');
+
+    // ISO/shutter pinned at capability max is direct evidence AE has no headroom left
+    if(caps.iso && st.iso !== undefined && st.iso >= caps.iso.max*0.98 &&
+       caps.exposureTime && st.exposureTime !== undefined && st.exposureTime >= caps.exposureTime.max*0.98){
+      setSat(true);
+    }
+  }
+
+  function fmtShutter(us){
+    if(us<=0) return 'n/a';
+    const sec = us/1e6;
+    return sec>=0.1 ? sec.toFixed(2)+'s' : '1/'+Math.round(1/sec);
+  }
+
+  // ---------- auto sweep: measures response slope per step ----------
+  // Walks compensation from 0 to max in device steps. After each step it waits for AE to settle,
+  // then compares brightness change against compensation change. A slope near zero means the
+  // lever is dead — the device is already giving everything it has.
+  $('sweepBtn').addEventListener('click', async ()=>{
+    if(sweeping || !expSupported || !expRange){ log('sweep unavailable'); return; }
+    sweeping = true;
+    $('sweepBtn').textContent = 'Sweeping…';
+    lastPoint = null; slope = null; setSat(false);
+    const step = expRange.step || 0.1;
+    try{
+      await setExp(0);
+      await wait(cfg.settleMs);
+      let base = sample();
+      lastPoint = { ev:(appExp!==null?appExp:0), b:base.brightness };
+      log('sweep base B='+base.brightness.toFixed(1));
+
+      for(let v=step; v<=expRange.max+1e-9; v+=step){
+        await setExp(v);
+        expSlider.value = reqExp;
+        await wait(cfg.settleMs);
+        const s = sample();
+        const evNow = (appExp!==null?appExp:reqExp);
+        const dEv = evNow - lastPoint.ev;
+        const dB = s.brightness - lastPoint.b;
+        slope = Math.abs(dEv)>1e-3 ? dB/dEv : null;
+        const dead = slope !== null && Math.abs(slope) < cfg.satSlope;
+        setSat(dead);
+        log('sweep ev '+evNow.toFixed(2)+' B='+s.brightness.toFixed(1)+
+            ' slope='+(slope===null?'n/a':slope.toFixed(1))+(dead?' DEAD':''));
+        recordPoint(v, s, evNow, slope, dead);
+        lastPoint = { ev:evNow, b:s.brightness };
+        if(dead){ log('sweep stopped — no response at ev '+evNow.toFixed(2)); break; }
+      }
+    } finally {
+      sweeping = false;
+      $('sweepBtn').textContent = 'Auto sweep';
+    }
+  });
+  function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  function recordPoint(req, s, evNow, slp, dead){
+    const st = vtrack.getSettings ? vtrack.getSettings() : {};
+    const ae = aeStops();
+    captures.push({ sweep:true, url:null, time:new Date(),
+      reqExp:req, appExp:evNow, brightness:s.brightness, clipPct:s.clipPct,
+      natural: naturalBrightness(s.brightness, evNow + (ae||0)),
+      aeStops: ae, iso: st.iso, shutter: st.exposureTime, torchOn, slope:slp, dead });
+    galleryCount.textContent = captures.filter(c=>c.url).length;
+  }
+
+  // ---------- capture ----------
+  $('captureBtn').addEventListener('click', ()=>{
+    if(!video.videoWidth){ log('no frame'); return; }
+    const s = sample();
+    const st = vtrack.getSettings ? vtrack.getSettings() : {};
+    const ae = aeStops();
+    const ev = (appExp !== null) ? appExp : reqExp;
+    const nat = naturalBrightness(s.brightness, ev + (ae||0));
+
+    const w=video.videoWidth, h=video.videoHeight;
+    captureCanvas.width=w; captureCanvas.height=h;
+    const c = captureCanvas.getContext('2d');
+    c.drawImage(video,0,0,w,h);
+
+    const barH = Math.max(56, Math.round(h*0.07));
+    c.fillStyle='rgba(0,0,0,.74)'; c.fillRect(0,h-barH,w,barH);
+    c.fillStyle='#fff';
+    const fs = Math.max(14, Math.round(barH*0.26));
+    c.font = fs+'px Roboto, Arial, sans-serif'; c.textBaseline='top';
+    c.fillText('MEASURED '+s.brightness.toFixed(1)+'   NATURAL '+nat.toFixed(1)+
+               '   CLIP '+s.clipPct.toFixed(1)+'%   TORCH '+(torchOn?'ON':'OFF'),
+               10, h-barH+5);
+    c.fillText('EXP req '+(reqExp>=0?'+':'')+reqExp.toFixed(2)+
+               ' / dev '+(appExp===null?'n/a':((appExp>=0?'+':'')+appExp.toFixed(2)))+
+               '   AE '+(ae===null?'n/a':((ae>=0?'+':'')+ae.toFixed(2))+' st')+
+               '   ISO '+(st.iso!==undefined?st.iso:'n/a')+
+               '   SH '+(st.exposureTime!==undefined?fmtShutter(st.exposureTime):'n/a'),
+               10, h-barH+5+fs+4);
+
+    captures.push({ sweep:false, url:captureCanvas.toDataURL('image/jpeg',0.92), time:new Date(),
+      reqExp, appExp, brightness:s.brightness, clipPct:s.clipPct, natural:nat,
+      aeStops:ae, iso:st.iso, shutter:st.exposureTime, torchOn, slope, dead:saturated });
+    galleryCount.textContent = captures.filter(c=>c.url).length;
+    log('captured B='+s.brightness.toFixed(1)+' nat='+nat.toFixed(1));
+    renderGallery();
+  });
+
+  function renderGallery(){
+    const imgs = captures.filter(c=>c.url);
+    if(!imgs.length){ galleryGrid.innerHTML='<div class="empty">No captures yet.</div>'; return; }
+    galleryGrid.innerHTML = imgs.map((c,i)=>
+      '<div class="g-item"><img src="'+c.url+'" data-i="'+i+'"><div class="meta">'+
+      '<b>#'+(i+1)+'</b><br>measured '+c.brightness.toFixed(1)+
+      '<br>natural '+c.natural.toFixed(1)+
+      '<br>req '+(c.reqExp>=0?'+':'')+c.reqExp.toFixed(2)+
+      ' / dev '+(c.appExp===null?'n/a':((c.appExp>=0?'+':'')+c.appExp.toFixed(2)))+
+      '<br>AE '+(c.aeStops===null||c.aeStops===undefined?'n/a':((c.aeStops>=0?'+':'')+c.aeStops.toFixed(2))+' st')+
+      '<br>ISO '+(c.iso??'n/a')+'  SH '+(c.shutter!==undefined?fmtShutter(c.shutter):'n/a')+
+      '<br>torch '+(c.torchOn?'ON':'OFF')+(c.dead?'<br><b>AT LIMIT</b>':'')+
+      '</div></div>').join('');
+    galleryGrid.querySelectorAll('img').forEach(im=>{
+      im.addEventListener('click',()=>{ lightboxImg.src = imgs[Number(im.dataset.i)].url;
+        lightbox.classList.add('open'); });
+    });
+  }
+
+  // ---------- CSV ----------
+  $('csvBtn').addEventListener('click', ()=>{
+    if(!captures.length){ log('nothing to export'); return; }
+    const head = ['time','kind','req_ev','dev_ev','clamped','ae_stops','iso','shutter_us',
+                  'torch','measured','natural','clip_pct','slope','at_limit'];
+    const rows = captures.map(c=>[
+      c.time.toISOString(), c.sweep?'sweep':'capture',
+      c.reqExp.toFixed(2), c.appExp===null?'':c.appExp.toFixed(2),
+      (c.appExp!==null && Math.abs(c.appExp-c.reqExp)>1e-3)?'yes':'no',
+      c.aeStops===null||c.aeStops===undefined?'':c.aeStops.toFixed(3),
+      c.iso??'', c.shutter??'', c.torchOn?'ON':'OFF',
+      c.brightness.toFixed(1), c.natural.toFixed(1), c.clipPct.toFixed(1),
+      c.slope===null||c.slope===undefined?'':c.slope.toFixed(2), c.dead?'yes':'no'
+    ].join(','));
+    const blob = new Blob([head.join(',')+'\r\n'+rows.join('\r\n')],{type:'text/csv'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='exposure-v3_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    log('csv exported · '+captures.length+' rows');
+  });
+
+  // ---------- calibrate reference ----------
+  // Point at a well-lit scene and tap ⌾ — current ISO and shutter become the zero-stop reference
+  $('calibBtn').addEventListener('click', ()=>{
+    const st = vtrack && vtrack.getSettings ? vtrack.getSettings() : {};
+    if(st.iso === undefined || st.exposureTime === undefined){
+      log('cannot calibrate — ISO/shutter not exposed on this device'); return;
+    }
+    cfg.isoRef = st.iso; cfg.timeRef = st.exposureTime;
+    $('setIsoRef').value = st.iso; $('setTimeRef').value = st.exposureTime;
+    log('reference set · ISO '+st.iso+' shutter '+fmtShutter(st.exposureTime));
+  });
+
+  // ---------- panels ----------
+  $('settingsBtn').addEventListener('click',()=>settingsSheet.classList.add('open'));
+  $('closeSettings').addEventListener('click',()=>settingsSheet.classList.remove('open'));
+  $('galleryBtn').addEventListener('click',()=>{ renderGallery(); gallerySheet.classList.add('open'); });
+  $('closeGallery').addEventListener('click',()=>gallerySheet.classList.remove('open'));
+  $('clearGallery').addEventListener('click',()=>{ captures=[]; galleryCount.textContent=0;
+    renderGallery(); log('cleared'); });
+  $('lightboxClose').addEventListener('click',()=>{ lightbox.classList.remove('open'); lightboxImg.src=''; });
+  $('cleanBtn').addEventListener('click',()=>ui.classList.toggle('clean'));
+  video.addEventListener('click',()=>{ if(ui.classList.contains('clean')) ui.classList.remove('clean'); });
+
+  $('exitBtn').addEventListener('click', async ()=>{
+    if(captures.length && !confirm(captures.length+' readings will be cleared. Export CSV first?\n\nOK to exit anyway.')) return;
+    if(vtrack) vtrack.stop();
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    clearInterval(sampleTimer);
+    video.srcObject=null; stream=null; vtrack=null;
+    torchOn=false; reqExp=0; appExp=null; captures=[]; lastPoint=null; slope=null; setSat(false);
+    galleryCount.textContent=0; renderGallery();
+    ui.classList.remove('show'); startOverlay.classList.remove('hidden');
+    settingsSheet.classList.remove('open'); gallerySheet.classList.remove('open');
+    try{ if(document.fullscreenElement) await document.exitFullscreen(); }catch(e){}
+  });
+
+  function checkOrient(){ orientWarn.classList.toggle('active', window.innerHeight>window.innerWidth); }
+  window.addEventListener('resize', checkOrient); checkOrient();
+})();
+</script>
+</body>
+</html>
