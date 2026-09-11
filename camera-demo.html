@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Camera Multi-Tab Demo — Bug vs Fixed</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; text-align: center; padding: 24px; }
+  h1 { margin-bottom: 4px; }
+  #modeLabel { font-size: 14px; color: #aaa; margin-bottom: 16px; }
+  .toggle { display: inline-flex; border: 1px solid #444; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+  .toggle button { padding: 8px 18px; border: none; background: #1a1a1a; color: #ccc; cursor: pointer; font-size: 14px; }
+  .toggle button.active.bug { background: #ff6b6b; color: #111; font-weight: bold; }
+  .toggle button.active.fixed { background: #6bff8f; color: #111; font-weight: bold; }
+  video { width: 480px; max-width: 90vw; background: #000; border-radius: 8px; border: 3px solid #444; transition: border-color .2s; }
+  video.bug-border { border-color: #ff6b6b; }
+  video.fixed-border { border-color: #6bff8f; }
+  #status { margin-top: 12px; font-size: 15px; padding: 8px 14px; border-radius: 6px; display: inline-block; background: #222; }
+  .live { color: #6bff8f; }
+  .dead { color: #ff6b6b; font-weight: bold; }
+  .warn { color: #ffd166; }
+  p.note { max-width: 500px; margin: 12px auto; color: #aaa; font-size: 14px; }
+  #log { max-width: 500px; margin: 14px auto; text-align: left; font-size: 12px; color: #888; max-height: 140px; overflow-y: auto; background: #1a1a1a; padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <h1>Camera Multi-Tab Freeze — Reproduce &amp; Fix</h1>
+  <div id="modeLabel">Mode: <b id="modeName">Buggy</b></div>
+
+  <div class="toggle">
+    <button id="btnBug" class="active bug">❌ Buggy</button>
+    <button id="btnFixed" class="fixed">✅ Fixed</button>
+  </div>
+
+  <p class="note">
+    Open this <b>same file, same mode</b>, in a second tab (or window). In <b>Buggy</b> mode, the second
+    tab steals the camera and the first tab freezes/blacks out forever. In <b>Fixed</b> mode, this tab
+    releases the camera when hidden and cleanly re-acquires it when focused again.
+  </p>
+
+  <video id="video" autoplay playsinline muted class="bug-border"></video>
+  <div id="status">starting…</div>
+  <div id="log"></div>
+
+  <script>
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const btnBug = document.getElementById('btnBug');
+    const btnFixed = document.getElementById('btnFixed');
+    const modeName = document.getElementById('modeName');
+
+    let mode = 'bug'; // 'bug' | 'fixed'
+    let currentStream = null;
+    let acquiring = false;
+    let lastFrameTime = -1;
+    let stuckTicks = 0;
+    let reacquireTimer = null;
+    let watchdogInterval = null;
+
+    function log(msg) {
+      const t = new Date().toLocaleTimeString();
+      logEl.innerHTML = `[${t}] ${msg}<br>` + logEl.innerHTML;
+    }
+
+    function setStatus(text, cls) {
+      status.textContent = text;
+      status.className = cls;
+    }
+
+    function stopStream() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+      video.srcObject = null;
+    }
+
+    async function acquireCamera(reason) {
+      if (acquiring) return;
+      if (mode === 'fixed' && document.hidden) return;
+      acquiring = true;
+      setStatus('acquiring camera (' + reason + ')…', 'warn');
+      log('acquiring camera: ' + reason);
+      try {
+        if (mode === 'fixed') stopStream(); // fixed mode: always release stale stream first
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        currentStream = stream;
+        video.srcObject = stream;
+        setStatus('camera live', 'live');
+        log('camera acquired');
+
+        const [track] = stream.getVideoTracks();
+        if (mode === 'fixed') {
+          track.onended = () => {
+            log('track ended (likely taken by another tab/app)');
+            setStatus('camera lost — reacquiring…', 'dead');
+            scheduleReacquire('track ended');
+          };
+          track.onmute = () => {
+            log('track muted');
+            setStatus('camera muted — waiting…', 'warn');
+          };
+          track.onunmute = () => {
+            log('track unmuted');
+            setStatus('camera live', 'live');
+          };
+        }
+        // Buggy mode: deliberately no onended/onmute listeners — mirrors the
+        // real-world bug where a stolen track just leaves a frozen <video>.
+      } catch (err) {
+        setStatus('getUserMedia failed: ' + err.message, 'dead');
+        log('error: ' + err.message);
+      } finally {
+        acquiring = false;
+      }
+    }
+
+    function scheduleReacquire(reason, delay = 800) {
+      if (reacquireTimer) return;
+      reacquireTimer = setTimeout(() => {
+        reacquireTimer = null;
+        if (!document.hidden) acquireCamera(reason);
+      }, delay);
+    }
+
+    function onVisibilityChange() {
+      if (mode !== 'fixed') return; // buggy mode ignores tab visibility entirely
+      if (document.hidden) {
+        log('tab hidden — releasing camera');
+        setStatus('tab hidden — camera released', 'warn');
+        stopStream();
+      } else {
+        log('tab visible — reacquiring camera');
+        acquireCamera('tab focused');
+      }
+    }
+
+    function startWatchdog() {
+      stopWatchdog();
+      watchdogInterval = setInterval(() => {
+        if (mode !== 'fixed') return; // buggy mode has no recovery watchdog
+        if (!currentStream || document.hidden) return;
+        const t = video.currentTime;
+        if (t === lastFrameTime) {
+          stuckTicks++;
+          if (stuckTicks >= 3) {
+            log('watchdog: frame stuck for 3+ checks, forcing restart');
+            stuckTicks = 0;
+            scheduleReacquire('watchdog stuck-frame', 0);
+          }
+        } else {
+          stuckTicks = 0;
+        }
+        lastFrameTime = t;
+      }, 1500);
+    }
+
+    function stopWatchdog() {
+      if (watchdogInterval) clearInterval(watchdogInterval);
+      watchdogInterval = null;
+      stuckTicks = 0;
+      lastFrameTime = -1;
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      modeName.textContent = mode === 'bug' ? 'Buggy' : 'Fixed';
+      btnBug.classList.toggle('active', mode === 'bug');
+      btnFixed.classList.toggle('active', mode === 'fixed');
+      video.classList.toggle('bug-border', mode === 'bug');
+      video.classList.toggle('fixed-border', mode === 'fixed');
+      logEl.innerHTML = '';
+      log('mode switched to ' + mode);
+      stopStream();
+      acquireCamera('mode change');
+    }
+
+    btnBug.addEventListener('click', () => setMode('bug'));
+    btnFixed.addEventListener('click', () => setMode('fixed'));
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    startWatchdog();
+    acquireCamera('initial load');
+  </script>
+</body>
+</html>
