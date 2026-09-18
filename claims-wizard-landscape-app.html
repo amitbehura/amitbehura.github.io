@@ -149,10 +149,61 @@ button{font-family:inherit}
 .doc-text{min-width:0;flex:1}
 .doc-title{display:block;font-size:13px;font-weight:500;line-height:1.2}
 .doc-sub{display:block;font-size:11px;color:rgba(15,23,42,.48);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* --- scale-to-fit + orientation gate --- */
+html,body{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+  overflow:hidden;
+}
+#viewport-wrap{
+  position:absolute;
+  top:0;
+  left:0;
+  width:844px;
+  height:390px;
+  transform-origin:top left;
+  will-change:transform;
+}
+#viewport-wrap .frame{
+  width:844px;
+  height:390px;
+}
+#rotate-prompt{
+  position:fixed;
+  inset:0;
+  background:#0f172a;
+  color:#fff;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  text-align:center;
+  padding:32px;
+  z-index:1000;
+}
+#rotate-prompt.show{display:flex}
+#rotate-prompt svg{width:44px;height:44px;animation:rotateHint 1.6s ease-in-out infinite}
+#rotate-prompt .msg{font-size:15px;line-height:1.5;max-width:280px}
+#rotate-prompt .msg b{display:block;font-size:17px;margin-bottom:4px}
+@keyframes rotateHint{
+  0%,100%{transform:rotate(0deg)}
+  50%{transform:rotate(-90deg)}
+}
+
 </style>
 </head>
 <body>
 
+<div id="rotate-prompt">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+  <div class="msg"><b>Rotate your phone</b>This claims wizard is designed for landscape. Turn your device sideways to continue.</div>
+</div>
+<div id="viewport-wrap">
 <div class="frame" id="wizard">
   <div class="wizard-header">
     <div class="wizard-title">
@@ -167,6 +218,8 @@ button{font-family:inherit}
     <div class="hint" id="hint"></div>
     <button class="btn btn-next" id="nextBtn"></button>
   </div>
+</div>
+
 </div>
 
 <script>
@@ -471,5 +524,55 @@ document.addEventListener('DOMContentLoaded', () => {
   new ClaimsWizard(document.getElementById('wizard'));
 });
 </script>
+
+<script>
+(function () {
+  var FRAME_W = 844, FRAME_H = 390;
+  var wrap = document.getElementById('viewport-wrap');
+  var prompt = document.getElementById('rotate-prompt');
+
+  function viewportSize() {
+    if (window.visualViewport) {
+      return { w: window.visualViewport.width, h: window.visualViewport.height };
+    }
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+
+  function isSmallScreen(w, h) {
+    // Treat phones/small tablets as the "must be landscape" class;
+    // desktop/large viewports just scale, no rotate gate.
+    return Math.max(w, h) < 900;
+  }
+
+  function fit() {
+    var vp = viewportSize();
+    var portrait = vp.h > vp.w;
+    var small = isSmallScreen(vp.w, vp.h);
+
+    if (portrait && small) {
+      prompt.classList.add('show');
+      wrap.style.visibility = 'hidden';
+      return;
+    }
+    prompt.classList.remove('show');
+    wrap.style.visibility = 'visible';
+
+    var scale = Math.min(vp.w / FRAME_W, vp.h / FRAME_H, 1);
+    var left = (vp.w - FRAME_W * scale) / 2;
+    var top = (vp.h - FRAME_H * scale) / 2;
+    wrap.style.transform = 'translate(' + left + 'px,' + top + 'px) scale(' + scale + ')';
+  }
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fit);
+    window.visualViewport.addEventListener('scroll', fit);
+  }
+  document.addEventListener('DOMContentLoaded', fit);
+  fit();
+})();
+</script>
+
 </body>
 </html>
