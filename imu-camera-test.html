@@ -58,11 +58,16 @@
   .crosshair { position: absolute; top: 50%; left: 50%; width: 1px; height: 100%; background: #2a3049; transform: translateX(-50%); }
   .crosshair.h { width: 100%; height: 1px; transform: translateY(-50%); }
 
-  #freeze-badge {
-    display: none; position: absolute; top: 8px; right: 8px;
-    background: #ff6b6b; color: #000; font-size: 11px; font-weight: 700;
+  #speed-badge {
+    position: absolute; top: 8px; right: 8px;
+    font-size: 11px; font-weight: 700;
     padding: 4px 8px; border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
   }
+  #speed-badge.still { background: #4cf5a1; color: #063; }
+  #speed-badge.slow { background: #7db8ff; color: #04225c; }
+  #speed-badge.fast { background: #ffb84c; color: #5c3600; }
+  #speed-badge.too-fast { background: #ff6b6b; color: #4a0000; }
   #shutter {
     position: fixed; z-index: 20; bottom: calc(24px + env(safe-area-inset-bottom));
     left: 50%; transform: translateX(-50%);
@@ -83,7 +88,7 @@
 
 <video id="camera-view" autoplay playsinline muted></video>
 
-<div id="freeze-badge">SHAKY — HOLD STILL</div>
+<div id="speed-badge" class="still">STILL</div>
 
 <div class="overlay" id="hud-top">
   <div class="section-title">Gyroscope — rotation</div>
@@ -103,6 +108,7 @@
   <div class="row"><span class="label">y (up / down)</span><span class="val" id="acc-y">—</span></div>
   <div class="row"><span class="label">z (forward / back)</span><span class="val" id="acc-z">—</span></div>
   <div class="row"><span class="label">movement intensity</span><span class="val" id="shake-level">—</span></div>
+  <div class="row"><span class="label">speed category</span><span class="val" id="speed-label">—</span></div>
 </div>
 
 <button id="shutter"></button>
@@ -112,7 +118,18 @@ const startScreen = document.getElementById('start-screen');
 const statusMsg = document.getElementById('status-msg');
 const video = document.getElementById('camera-view');
 const tiltDot = document.getElementById('tilt-dot');
-const freezeBadge = document.getElementById('freeze-badge');
+const speedBadge = document.getElementById('speed-badge');
+
+const SPEED_BANDS = [
+  { max: 0.5, key: 'still',    label: 'STILL' },
+  { max: 2,   key: 'slow',     label: 'SLOW' },
+  { max: 5,   key: 'fast',     label: 'FAST' },
+  { max: Infinity, key: 'too-fast', label: 'TOO FAST' },
+];
+
+function speedBandFor(avg) {
+  return SPEED_BANDS.find(band => avg <= band.max);
+}
 
 const el = {
   alpha: document.getElementById('alpha'),
@@ -122,6 +139,7 @@ const el = {
   accY: document.getElementById('acc-y'),
   accZ: document.getElementById('acc-z'),
   shakeLevel: document.getElementById('shake-level'),
+  speedLabel: document.getElementById('speed-label'),
 };
 
 function fmt(n, unit) {
@@ -163,7 +181,11 @@ function handleMotion(e) {
   const avg = shakeHistory.reduce((a,b) => a+b, 0) / shakeHistory.length;
 
   el.shakeLevel.textContent = fmt(avg, ' m/s²');
-  freezeBadge.style.display = avg > 3 ? 'block' : 'none';
+
+  const band = speedBandFor(avg);
+  el.speedLabel.textContent = band.label;
+  speedBadge.textContent = band.label;
+  speedBadge.className = band.key;
 }
 
 async function requestMotionPermission() {
