@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Camera Resolution & Format Test</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -60,17 +61,21 @@
 <h1>Camera Resolution & Format Test</h1>
 <div class="sub">Requests SD / HD / Full HD / 2K / 4K from the camera, captures one frame per tier, exports it as PNG / JPEG / WebP, and logs requested vs. actual resolution + file size for each.</div>
 
+<div class="row" style="margin-bottom:8px;">
+  <button class="capture" id="camBackBtn" style="background:#2962ff;">Back Camera</button>
+  <button class="capture" id="camFrontBtn" style="background:#333;">Front Camera</button>
+</div>
 <button class="runall" id="runAllBtn">Run All 5 Tiers (Auto) — 15 Images + CSV</button>
 <div class="status" id="status">Idle. Click "Run All" to automate, or use the tabs below to capture tiers manually.</div>
 
 <div class="tabs" id="tabs"></div>
 <div id="panels"></div>
 
-<button class="csvbtn" id="csvBtn" disabled>Download Summary CSV</button>
+<button class="csvbtn" id="csvBtn" disabled>Download ZIP (images + CSV)</button>
 
 <table id="resultsTable">
   <thead>
-    <tr><th>Tier</th><th>Requested</th><th>Actual</th><th>Format</th><th>File Size</th><th>Time</th></tr>
+    <tr><th>Camera</th><th>Tier</th><th>Requested</th><th>Actual</th><th>Format</th><th>File Size</th><th>Time</th></tr>
   </thead>
   <tbody id="resultsBody"></tbody>
 </table>
@@ -92,7 +97,9 @@ const FORMATS = [
 ];
 
 let currentStream = null;
-let results = []; // {tierKey, tierLabel, reqW, reqH, actW, actH, format, sizeBytes, time}
+let currentFacingMode = 'environment'; // 'environment' = back camera, 'user' = front camera
+let results = []; // {tierKey, tierLabel, reqW, reqH, actW, actH, format, sizeBytes, time, camera}
+let zipFiles = []; // {filename, blob} — collected in memory, bundled into one ZIP on demand
 
 const tabsEl = document.getElementById('tabs');
 const panelsEl = document.getElementById('panels');
@@ -137,6 +144,17 @@ panelsEl.querySelectorAll('button.capture').forEach(btn => {
   btn.onclick = () => runTier(btn.dataset.key, { manual: true });
 });
 
+const camBackBtn = document.getElementById('camBackBtn');
+const camFrontBtn = document.getElementById('camFrontBtn');
+function setFacingMode(mode) {
+  currentFacingMode = mode;
+  camBackBtn.style.background = mode === 'environment' ? '#2962ff' : '#333';
+  camFrontBtn.style.background = mode === 'user' ? '#2962ff' : '#333';
+  setStatus(`Camera set to ${mode === 'environment' ? 'back' : 'front'}. Start a capture to apply.`);
+}
+camBackBtn.onclick = () => setFacingMode('environment');
+camFrontBtn.onclick = () => setFacingMode('user');
+
 function selectTab(key) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.key === key));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
@@ -154,7 +172,8 @@ async function startTierStream(tier) {
   const constraints = {
     video: {
       width: { ideal: tier.w },
-      height: { ideal: tier.h }
+      height: { ideal: tier.h },
+      facingMode: { ideal: currentFacingMode }
     },
     audio: false
   };
@@ -205,6 +224,7 @@ function addResultRow(r) {
   results.push(r);
   const tr = document.createElement('tr');
   tr.innerHTML = `
+    <td>${r.camera}</td>
     <td>${r.tierLabel}</td>
     <td>${r.reqW}×${r.reqH}</td>
     <td>${r.actW}×${r.actH}</td>
@@ -250,8 +270,9 @@ async function runTier(key, opts = {}) {
 
   for (const fmt of FORMATS) {
     const blob = await canvasToBlob(canvas, fmt);
-    const filename = `camtest_${tier.key}_actual${actW}x${actH}_${fmt.ext}_${ts}.${fmt.ext}`;
-    downloadBlob(blob, filename);
+    const camLabel = currentFacingMode === 'environment' ? 'back' : 'front';
+    const filename = `camtest_${camLabel}_${tier.key}_actual${actW}x${actH}_${fmt.ext}_${ts}.${fmt.ext}`;
+    zipFiles.push({ filename, blob });
     addThumb(key, blob, fmt, actW, actH);
     addResultRow({
       tierKey: key, tierLabel: tier.label,
@@ -259,13 +280,12 @@ async function runTier(key, opts = {}) {
       actW, actH,
       format: fmt.ext,
       sizeBytes: blob.size,
-      time: new Date().toLocaleTimeString()
+      time: new Date().toLocaleTimeString(),
+      camera: camLabel
     });
-    // small gap so the browser doesn't batch-block the downloads
-    await new Promise(r => setTimeout(r, 250));
   }
 
-  setStatus(`[${tier.label}] Done. Exported PNG/JPEG/WebP at ${actW}×${actH}.`);
+  setStatus(`[${tier.label}] Done. Captured PNG/JPEG/WebP at ${actW}×${actH}. Added to ZIP queue (${zipFiles.length} files so far).`);
 }
 
 runAllBtn.onclick = async () => {
@@ -277,8 +297,8 @@ runAllBtn.onclick = async () => {
       await new Promise(r => setTimeout(r, 500));
     }
     stopStream();
-    setStatus(`All 5 tiers complete. 15 images downloaded. Click "Download Summary CSV" below.`);
-    downloadCSV();
+    setStatus(`All 5 tiers complete. ${zipFiles.length} images captured. Building ZIP...`);
+    await downloadZip();
   } catch (err) {
     setStatus(`Run All stopped early: ${err.message}`);
   } finally {
@@ -287,10 +307,11 @@ runAllBtn.onclick = async () => {
   }
 };
 
-function downloadCSV() {
-  const header = ['Tier', 'Requested WxH', 'Actual WxH', 'Format', 'Size (bytes)', 'Size (readable)', 'Time', 'User Agent'];
+function buildCSV() {
+  const header = ['Camera', 'Tier', 'Requested WxH', 'Actual WxH', 'Format', 'Size (bytes)', 'Size (readable)', 'Time', 'User Agent'];
   const ua = navigator.userAgent.replace(/,/g, ';');
   const rows = results.map(r => [
+    r.camera,
     r.tierLabel,
     `${r.reqW}x${r.reqH}`,
     `${r.actW}x${r.actH}`,
@@ -300,12 +321,23 @@ function downloadCSV() {
     r.time,
     ua
   ].join(','));
-  const csv = [header.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  downloadBlob(blob, `camtest_summary_${timeStamp()}.csv`);
+  return [header.join(','), ...rows].join('\n');
 }
 
-csvBtn.onclick = downloadCSV;
+async function downloadZip() {
+  if (!zipFiles.length) return;
+  setStatus(`Zipping ${zipFiles.length} images + CSV...`);
+  const zip = new JSZip();
+  for (const f of zipFiles) {
+    zip.file(f.filename, f.blob);
+  }
+  zip.file(`camtest_summary_${timeStamp()}.csv`, buildCSV());
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(zipBlob, `camtest_${timeStamp()}.zip`);
+  setStatus(`ZIP downloaded: ${zipFiles.length} images + CSV, ${fmtBytes(zipBlob.size)} total. Upload that one file.`);
+}
+
+csvBtn.onclick = downloadZip;
 
 document.getElementById('deviceMeta').textContent =
   `Device info (also saved in CSV): ${navigator.userAgent}`;
