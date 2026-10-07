@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>IMU + Camera Test</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #000; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #camera-view {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    object-fit: cover; background: #111;
+  }
+  #start-screen {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 24px; text-align: center;
+    background: #0b0b0f;
+  }
+  #start-screen h1 { font-size: 20px; margin: 0 0 4px; }
+  #start-screen p { font-size: 14px; color: #a9afc3; margin: 0; max-width: 320px; line-height: 1.5; }
+  button.primary {
+    appearance: none; border: none; border-radius: 12px;
+    background: #4c8bf5; color: #fff; font-size: 16px; font-weight: 600;
+    padding: 14px 28px; margin-top: 8px;
+  }
+  button.primary:active { background: #3a6fd0; }
+  #status-msg { font-size: 13px; color: #ff6b6b; min-height: 18px; }
+
+  .overlay {
+    position: fixed; z-index: 10; left: 12px; right: 12px;
+    background: rgba(10,10,15,0.72); backdrop-filter: blur(6px);
+    border-radius: 14px; padding: 12px 14px; font-size: 13px;
+  }
+  #hud-top { top: calc(12px + env(safe-area-inset-top)); }
+  #hud-bottom { bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+  .row { display: flex; justify-content: space-between; margin: 4px 0; }
+  .label { color: #8d94ad; }
+  .val { font-family: "SF Mono", Menlo, Consolas, monospace; min-width: 90px; text-align: right; }
+
+  .section-title { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #6b7290; margin-bottom: 6px; }
+
+  .tilt-dot {
+    position: absolute; top: 50%; left: 50%; width: 14px; height: 14px;
+    border-radius: 50%; background: #4cf5a1; box-shadow: 0 0 10px #4cf5a1;
+    transform: translate(-50%, -50%);
+  }
+  .tilt-box {
+    position: relative; width: 100%; height: 90px; margin-top: 6px;
+    border: 1px solid #333a52; border-radius: 10px; overflow: hidden;
+  }
+  .crosshair { position: absolute; top: 50%; left: 50%; width: 1px; height: 100%; background: #2a3049; transform: translateX(-50%); }
+  .crosshair.h { width: 100%; height: 1px; transform: translateY(-50%); }
+
+  #freeze-badge {
+    display: none; position: absolute; top: 8px; right: 8px;
+    background: #ff6b6b; color: #000; font-size: 11px; font-weight: 700;
+    padding: 4px 8px; border-radius: 6px;
+  }
+  #shutter {
+    position: fixed; z-index: 20; bottom: calc(24px + env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%);
+    width: 68px; height: 68px; border-radius: 50%;
+    background: #fff; border: 4px solid rgba(255,255,255,0.4);
+  }
+  #shutter:active { background: #ddd; }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>IMU + Camera Test</h1>
+  <p>This page opens your camera and reads the phone's motion sensors (accelerometer + gyroscope) so you can see what "IMU access" actually gives an inspection app — separate from the image itself.</p>
+  <button class="primary" id="start-btn">Enable Camera + Motion</button>
+  <div id="status-msg"></div>
+</div>
+
+<video id="camera-view" autoplay playsinline muted></video>
+
+<div id="freeze-badge">SHAKY — HOLD STILL</div>
+
+<div class="overlay" id="hud-top">
+  <div class="section-title">Gyroscope — rotation</div>
+  <div class="row"><span class="label">alpha (compass heading)</span><span class="val" id="alpha">—</span></div>
+  <div class="row"><span class="label">beta (front-back tilt)</span><span class="val" id="beta">—</span></div>
+  <div class="row"><span class="label">gamma (left-right tilt)</span><span class="val" id="gamma">—</span></div>
+  <div class="tilt-box">
+    <div class="crosshair"></div>
+    <div class="crosshair h"></div>
+    <div class="tilt-dot" id="tilt-dot"></div>
+  </div>
+</div>
+
+<div class="overlay" id="hud-bottom">
+  <div class="section-title">Accelerometer — movement</div>
+  <div class="row"><span class="label">x (left / right)</span><span class="val" id="acc-x">—</span></div>
+  <div class="row"><span class="label">y (up / down)</span><span class="val" id="acc-y">—</span></div>
+  <div class="row"><span class="label">z (forward / back)</span><span class="val" id="acc-z">—</span></div>
+  <div class="row"><span class="label">movement intensity</span><span class="val" id="shake-level">—</span></div>
+</div>
+
+<button id="shutter"></button>
+
+<script>
+const startScreen = document.getElementById('start-screen');
+const statusMsg = document.getElementById('status-msg');
+const video = document.getElementById('camera-view');
+const tiltDot = document.getElementById('tilt-dot');
+const freezeBadge = document.getElementById('freeze-badge');
+
+const el = {
+  alpha: document.getElementById('alpha'),
+  beta: document.getElementById('beta'),
+  gamma: document.getElementById('gamma'),
+  accX: document.getElementById('acc-x'),
+  accY: document.getElementById('acc-y'),
+  accZ: document.getElementById('acc-z'),
+  shakeLevel: document.getElementById('shake-level'),
+};
+
+function fmt(n, unit) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  return n.toFixed(1) + (unit || '');
+}
+
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment' },
+    audio: false
+  });
+  video.srcObject = stream;
+}
+
+function handleOrientation(e) {
+  el.alpha.textContent = fmt(e.alpha, '°');
+  el.beta.textContent = fmt(e.beta, '°');
+  el.gamma.textContent = fmt(e.gamma, '°');
+
+  const beta = e.beta || 0;
+  const gamma = e.gamma || 0;
+  const maxOffset = 40; // px from center per axis
+  const x = Math.max(-1, Math.min(1, gamma / 45)) * maxOffset;
+  const y = Math.max(-1, Math.min(1, beta / 45)) * maxOffset;
+  tiltDot.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+}
+
+let shakeHistory = [];
+function handleMotion(e) {
+  const acc = e.acceleration || e.accelerationIncludingGravity || {};
+  el.accX.textContent = fmt(acc.x, ' m/s²');
+  el.accY.textContent = fmt(acc.y, ' m/s²');
+  el.accZ.textContent = fmt(acc.z, ' m/s²');
+
+  const magnitude = Math.sqrt((acc.x||0)**2 + (acc.y||0)**2 + (acc.z||0)**2);
+  shakeHistory.push(magnitude);
+  if (shakeHistory.length > 10) shakeHistory.shift();
+  const avg = shakeHistory.reduce((a,b) => a+b, 0) / shakeHistory.length;
+
+  el.shakeLevel.textContent = fmt(avg, ' m/s²');
+  freezeBadge.style.display = avg > 3 ? 'block' : 'none';
+}
+
+async function requestMotionPermission() {
+  // iOS 13+ requires an explicit user-gesture permission prompt for both APIs
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    const result = await DeviceOrientationEvent.requestPermission();
+    if (result !== 'granted') throw new Error('Motion permission denied');
+  }
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    const result = await DeviceMotionEvent.requestPermission();
+    if (result !== 'granted') throw new Error('Motion permission denied');
+  }
+  window.addEventListener('deviceorientation', handleOrientation);
+  window.addEventListener('devicemotion', handleMotion);
+}
+
+document.getElementById('start-btn').addEventListener('click', async () => {
+  statusMsg.textContent = '';
+  try {
+    await startCamera();
+  } catch (err) {
+    statusMsg.textContent = 'Camera error: ' + err.message;
+    return;
+  }
+  try {
+    await requestMotionPermission();
+  } catch (err) {
+    statusMsg.textContent = 'Motion sensors unavailable: ' + err.message + ' (camera still works)';
+  }
+  startScreen.style.display = 'none';
+});
+
+document.getElementById('shutter').addEventListener('click', () => {
+  document.getElementById('shutter').style.transform = 'translateX(-50%) scale(0.9)';
+  setTimeout(() => {
+    document.getElementById('shutter').style.transform = 'translateX(-50%) scale(1)';
+  }, 120);
+});
+</script>
+
+</body>
+</html>
