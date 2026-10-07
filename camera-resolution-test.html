@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Resolution & Format Test</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 16px; background: #0f1115; color: #e8eaed;
+    max-width: 960px; margin: 0 auto;
+  }
+  h1 { font-size: 18px; margin: 8px 0 4px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 16px; }
+  .runall {
+    display: block; width: 100%; padding: 14px; font-size: 15px; font-weight: 600;
+    background: #4caf50; color: #fff; border: none; border-radius: 8px; cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .runall:disabled { background: #555; cursor: not-allowed; }
+  .status {
+    background: #1a1d24; border: 1px solid #2a2e37; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; margin-bottom: 16px; min-height: 20px;
+    white-space: pre-wrap;
+  }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 12px; }
+  .tab {
+    flex: 1; padding: 10px 6px; text-align: center; background: #1a1d24;
+    border: 1px solid #2a2e37; border-radius: 6px; cursor: pointer; font-size: 12px;
+    white-space: nowrap;
+  }
+  .tab.active { background: #2962ff; border-color: #2962ff; color: #fff; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button.capture {
+    flex: 1; padding: 10px; font-size: 14px; background: #2962ff; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+  }
+  button.capture:disabled { background: #444; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+  th, td { border: 1px solid #2a2e37; padding: 6px 8px; text-align: left; }
+  th { background: #1a1d24; }
+  .thumbs { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .thumb { width: 100px; }
+  .thumb img { width: 100%; border-radius: 6px; border: 1px solid #2a2e37; }
+  .thumb div { font-size: 10px; color: #9aa0a6; margin-top: 2px; word-break: break-all; }
+  .csvbtn {
+    margin-top: 16px; width: 100%; padding: 10px; background: #1a1d24; color: #e8eaed;
+    border: 1px solid #2a2e37; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .meta { font-size: 11px; color: #9aa0a6; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Camera Resolution & Format Test</h1>
+<div class="sub">Requests SD / HD / Full HD / 2K / 4K from the camera, captures one frame per tier, exports it as PNG / JPEG / WebP, and logs requested vs. actual resolution + file size for each.</div>
+
+<button class="runall" id="runAllBtn">Run All 5 Tiers (Auto) — 15 Images + CSV</button>
+<div class="status" id="status">Idle. Click "Run All" to automate, or use the tabs below to capture tiers manually.</div>
+
+<div class="tabs" id="tabs"></div>
+<div id="panels"></div>
+
+<button class="csvbtn" id="csvBtn" disabled>Download Summary CSV</button>
+
+<table id="resultsTable">
+  <thead>
+    <tr><th>Tier</th><th>Requested</th><th>Actual</th><th>Format</th><th>File Size</th><th>Time</th></tr>
+  </thead>
+  <tbody id="resultsBody"></tbody>
+</table>
+
+<div class="meta" id="deviceMeta"></div>
+
+<script>
+const TIERS = [
+  { key: '480p',  label: '480p (SD)',       w: 640,  h: 480 },
+  { key: '720p',  label: '720p (HD)',       w: 1280, h: 720 },
+  { key: '1080p', label: '1080p (Full HD)', w: 1920, h: 1080 },
+  { key: '1440p', label: '1440p (2K/QHD)',  w: 2560, h: 1440 },
+  { key: '2160p', label: '2160p (4K/UHD)',  w: 3840, h: 2160 },
+];
+const FORMATS = [
+  { ext: 'png',  mime: 'image/png' },
+  { ext: 'jpg',  mime: 'image/jpeg', quality: 0.92 },
+  { ext: 'webp', mime: 'image/webp', quality: 0.92 },
+];
+
+let currentStream = null;
+let results = []; // {tierKey, tierLabel, reqW, reqH, actW, actH, format, sizeBytes, time}
+
+const tabsEl = document.getElementById('tabs');
+const panelsEl = document.getElementById('panels');
+const statusEl = document.getElementById('status');
+const resultsBody = document.getElementById('resultsBody');
+const csvBtn = document.getElementById('csvBtn');
+const runAllBtn = document.getElementById('runAllBtn');
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function pad(n) { return n.toString().padStart(2, '0'); }
+function timeStamp() {
+  const d = new Date();
+  return `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+TIERS.forEach((tier, i) => {
+  const tab = document.createElement('div');
+  tab.className = 'tab' + (i === 0 ? ' active' : '');
+  tab.textContent = tier.label;
+  tab.dataset.key = tier.key;
+  tab.onclick = () => selectTab(tier.key);
+  tabsEl.appendChild(tab);
+
+  const panel = document.createElement('div');
+  panel.className = 'panel' + (i === 0 ? ' active' : '');
+  panel.id = 'panel-' + tier.key;
+  panel.innerHTML = `
+    <div style="font-size:13px; color:#9aa0a6; margin-bottom:6px;">
+      Requesting ideal ${tier.w}×${tier.h}
+    </div>
+    <video id="video-${tier.key}" autoplay playsinline muted></video>
+    <div class="row">
+      <button class="capture" data-key="${tier.key}">Start Camera + Capture (PNG/JPEG/WebP)</button>
+    </div>
+    <div class="thumbs" id="thumbs-${tier.key}"></div>
+  `;
+  panelsEl.appendChild(panel);
+});
+
+panelsEl.querySelectorAll('button.capture').forEach(btn => {
+  btn.onclick = () => runTier(btn.dataset.key, { manual: true });
+});
+
+function selectTab(key) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.key === key));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
+}
+
+function stopStream() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+}
+
+async function startTierStream(tier) {
+  stopStream();
+  const constraints = {
+    video: {
+      width: { ideal: tier.w },
+      height: { ideal: tier.h }
+    },
+    audio: false
+  };
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  currentStream = stream;
+  const video = document.getElementById('video-' + tier.key);
+  video.srcObject = stream;
+  await video.play();
+  // let the stream settle to its negotiated resolution
+  await new Promise(r => setTimeout(r, 700));
+  const track = stream.getVideoTracks()[0];
+  const settings = track.getSettings();
+  return { video, track, settings };
+}
+
+function captureFrame(video, actW, actH) {
+  const canvas = document.createElement('canvas');
+  canvas.width = actW || video.videoWidth;
+  canvas.height = actH || video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function canvasToBlob(canvas, fmt) {
+  return new Promise(resolve => {
+    canvas.toBlob(blob => resolve(blob), fmt.mime, fmt.quality);
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function fmtBytes(n) {
+  if (n > 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  return (n / 1024).toFixed(1) + ' KB';
+}
+
+function addResultRow(r) {
+  results.push(r);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${r.tierLabel}</td>
+    <td>${r.reqW}×${r.reqH}</td>
+    <td>${r.actW}×${r.actH}</td>
+    <td>${r.format.toUpperCase()}</td>
+    <td>${fmtBytes(r.sizeBytes)}</td>
+    <td>${r.time}</td>
+  `;
+  resultsBody.appendChild(tr);
+  csvBtn.disabled = false;
+}
+
+function addThumb(tierKey, blob, fmt, w, h) {
+  const thumbsEl = document.getElementById('thumbs-' + tierKey);
+  const url = URL.createObjectURL(blob);
+  const div = document.createElement('div');
+  div.className = 'thumb';
+  div.innerHTML = `<img src="${url}"><div>${fmt.ext.toUpperCase()}<br>${w}×${h}<br>${fmtBytes(blob.size)}</div>`;
+  thumbsEl.appendChild(div);
+}
+
+async function runTier(key, opts = {}) {
+  const tier = TIERS.find(t => t.key === key);
+  if (!opts.manual) selectTab(key);
+  setStatus(`[${tier.label}] Requesting camera (ideal ${tier.w}×${tier.h})...`);
+  document.getElementById('thumbs-' + key).innerHTML = '';
+
+  let video, settings;
+  try {
+    const r = await startTierStream(tier);
+    video = r.video;
+    settings = r.settings;
+  } catch (err) {
+    setStatus(`[${tier.label}] Camera access failed: ${err.message}`);
+    throw err;
+  }
+
+  const actW = settings.width || video.videoWidth;
+  const actH = settings.height || video.videoHeight;
+  setStatus(`[${tier.label}] Got actual ${actW}×${actH}. Capturing frame and encoding 3 formats...`);
+
+  const canvas = captureFrame(video, actW, actH);
+  const ts = timeStamp();
+
+  for (const fmt of FORMATS) {
+    const blob = await canvasToBlob(canvas, fmt);
+    const filename = `camtest_${tier.key}_actual${actW}x${actH}_${fmt.ext}_${ts}.${fmt.ext}`;
+    downloadBlob(blob, filename);
+    addThumb(key, blob, fmt, actW, actH);
+    addResultRow({
+      tierKey: key, tierLabel: tier.label,
+      reqW: tier.w, reqH: tier.h,
+      actW, actH,
+      format: fmt.ext,
+      sizeBytes: blob.size,
+      time: new Date().toLocaleTimeString()
+    });
+    // small gap so the browser doesn't batch-block the downloads
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  setStatus(`[${tier.label}] Done. Exported PNG/JPEG/WebP at ${actW}×${actH}.`);
+}
+
+runAllBtn.onclick = async () => {
+  runAllBtn.disabled = true;
+  runAllBtn.textContent = 'Running...';
+  try {
+    for (const tier of TIERS) {
+      await runTier(tier.key, { manual: false });
+      await new Promise(r => setTimeout(r, 500));
+    }
+    stopStream();
+    setStatus(`All 5 tiers complete. 15 images downloaded. Click "Download Summary CSV" below.`);
+    downloadCSV();
+  } catch (err) {
+    setStatus(`Run All stopped early: ${err.message}`);
+  } finally {
+    runAllBtn.disabled = false;
+    runAllBtn.textContent = 'Run All 5 Tiers (Auto) — 15 Images + CSV';
+  }
+};
+
+function downloadCSV() {
+  const header = ['Tier', 'Requested WxH', 'Actual WxH', 'Format', 'Size (bytes)', 'Size (readable)', 'Time', 'User Agent'];
+  const ua = navigator.userAgent.replace(/,/g, ';');
+  const rows = results.map(r => [
+    r.tierLabel,
+    `${r.reqW}x${r.reqH}`,
+    `${r.actW}x${r.actH}`,
+    r.format,
+    r.sizeBytes,
+    fmtBytes(r.sizeBytes),
+    r.time,
+    ua
+  ].join(','));
+  const csv = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  downloadBlob(blob, `camtest_summary_${timeStamp()}.csv`);
+}
+
+csvBtn.onclick = downloadCSV;
+
+document.getElementById('deviceMeta').textContent =
+  `Device info (also saved in CSV): ${navigator.userAgent}`;
+</script>
+
+</body>
+</html>
