@@ -38,7 +38,7 @@
     border-radius: 14px; padding: 12px 14px; font-size: 13px;
   }
   #hud-top { top: calc(12px + env(safe-area-inset-top)); }
-  #hud-bottom { bottom: calc(12px + env(safe-area-inset-bottom)); }
+  #hud-bottom { bottom: calc(96px + env(safe-area-inset-bottom)); }
 
   .row { display: flex; justify-content: space-between; margin: 4px 0; }
   .label { color: #8d94ad; }
@@ -58,16 +58,11 @@
   .crosshair { position: absolute; top: 50%; left: 50%; width: 1px; height: 100%; background: #2a3049; transform: translateX(-50%); }
   .crosshair.h { width: 100%; height: 1px; transform: translateY(-50%); }
 
-  #speed-badge {
-    position: absolute; top: 8px; right: 8px;
-    font-size: 11px; font-weight: 700;
-    padding: 4px 8px; border-radius: 6px;
-    transition: background 0.15s, color 0.15s;
-  }
-  #speed-badge.still { background: #4cf5a1; color: #063; }
-  #speed-badge.slow { background: #7db8ff; color: #04225c; }
-  #speed-badge.fast { background: #ffb84c; color: #5c3600; }
-  #speed-badge.too-fast { background: #ff6b6b; color: #4a0000; }
+  .val.still { color: #4cf5a1; }
+  .val.slow { color: #7db8ff; }
+  .val.fast { color: #ffb84c; }
+  .val.too-fast { color: #ff6b6b; }
+
   #shutter {
     position: fixed; z-index: 20; bottom: calc(24px + env(safe-area-inset-bottom));
     left: 50%; transform: translateX(-50%);
@@ -88,8 +83,6 @@
 
 <video id="camera-view" autoplay playsinline muted></video>
 
-<div id="speed-badge" class="still">STILL</div>
-
 <div class="overlay" id="hud-top">
   <div class="section-title">Gyroscope — rotation</div>
   <div class="row"><span class="label">alpha (compass heading)</span><span class="val" id="alpha">—</span></div>
@@ -108,7 +101,7 @@
   <div class="row"><span class="label">y (up / down)</span><span class="val" id="acc-y">—</span></div>
   <div class="row"><span class="label">z (forward / back)</span><span class="val" id="acc-z">—</span></div>
   <div class="row"><span class="label">movement intensity</span><span class="val" id="shake-level">—</span></div>
-  <div class="row"><span class="label">speed category</span><span class="val" id="speed-label">—</span></div>
+  <div class="row"><span class="label">speed category</span><span class="val" id="speed-label" style="font-weight:700;">—</span></div>
 </div>
 
 <button id="shutter"></button>
@@ -118,7 +111,6 @@ const startScreen = document.getElementById('start-screen');
 const statusMsg = document.getElementById('status-msg');
 const video = document.getElementById('camera-view');
 const tiltDot = document.getElementById('tilt-dot');
-const speedBadge = document.getElementById('speed-badge');
 
 const SPEED_BANDS = [
   { max: 0.5, key: 'still',    label: 'STILL' },
@@ -184,8 +176,7 @@ function handleMotion(e) {
 
   const band = speedBandFor(avg);
   el.speedLabel.textContent = band.label;
-  speedBadge.textContent = band.label;
-  speedBadge.className = band.key;
+  el.speedLabel.className = 'val ' + band.key;
 }
 
 async function requestMotionPermission() {
