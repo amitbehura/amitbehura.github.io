@@ -8,13 +8,14 @@
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    margin: 0; padding: 16px; background: #0f1115; color: #e8eaed;
-    max-width: 960px; margin: 0 auto;
+    margin: 0 auto; padding: 12px; background: #0f1115; color: #e8eaed;
+    max-width: 960px; width: 100%;
   }
-  h1 { font-size: 18px; margin: 8px 0 4px; }
-  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 16px; }
+  h1 { font-size: 17px; margin: 4px 0 4px; }
+  .sub { color: #9aa0a6; font-size: 12px; margin-bottom: 14px; line-height: 1.4; }
   .runall {
     display: block; width: 100%; padding: 14px; font-size: 15px; font-weight: 600;
     background: #4caf50; color: #fff; border: none; border-radius: 8px; cursor: pointer;
@@ -26,29 +27,30 @@
     padding: 10px 12px; font-size: 13px; margin-bottom: 16px; min-height: 20px;
     white-space: pre-wrap;
   }
-  .tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 12px; }
+  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 12px; }
   .tab {
-    flex: 1; padding: 10px 6px; text-align: center; background: #1a1d24;
-    border: 1px solid #2a2e37; border-radius: 6px; cursor: pointer; font-size: 12px;
-    white-space: nowrap;
+    padding: 8px 2px; text-align: center; background: #1a1d24;
+    border: 1px solid #2a2e37; border-radius: 6px; cursor: pointer; font-size: 11px;
+    line-height: 1.3; overflow: hidden;
   }
   .tab.active { background: #2962ff; border-color: #2962ff; color: #fff; }
   .panel { display: none; }
   .panel.active { display: block; }
-  video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
+  video { width: 100%; max-height: 300px; background: #000; border-radius: 8px; display: block; }
   .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   button.capture {
-    flex: 1; padding: 10px; font-size: 14px; background: #2962ff; color: #fff;
-    border: none; border-radius: 8px; cursor: pointer;
+    flex: 1; padding: 10px; font-size: 13px; background: #2962ff; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer; min-width: 0;
   }
   button.capture:disabled { background: #444; cursor: not-allowed; }
-  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
-  th, td { border: 1px solid #2a2e37; padding: 6px 8px; text-align: left; }
+  .tablewrap { width: 100%; overflow-x: auto; margin-top: 14px; }
+  table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #2a2e37; padding: 5px 6px; text-align: left; white-space: nowrap; }
   th { background: #1a1d24; }
   .thumbs { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .thumb { width: 100px; }
+  .thumb { width: 86px; }
   .thumb img { width: 100%; border-radius: 6px; border: 1px solid #2a2e37; }
-  .thumb div { font-size: 10px; color: #9aa0a6; margin-top: 2px; word-break: break-all; }
+  .thumb div { font-size: 9px; color: #9aa0a6; margin-top: 2px; word-break: break-all; }
   .csvbtn {
     margin-top: 16px; width: 100%; padding: 10px; background: #1a1d24; color: #e8eaed;
     border: 1px solid #2a2e37; border-radius: 8px; cursor: pointer; font-size: 13px;
@@ -61,10 +63,6 @@
 <h1>Camera Resolution & Format Test</h1>
 <div class="sub">Requests SD / HD / Full HD / 2K / 4K from the camera, captures one frame per tier, exports it as PNG / JPEG / WebP, and logs requested vs. actual resolution + file size for each.</div>
 
-<div class="row" style="margin-bottom:8px;">
-  <button class="capture" id="camBackBtn" style="background:#2962ff;">Back Camera</button>
-  <button class="capture" id="camFrontBtn" style="background:#333;">Front Camera</button>
-</div>
 <button class="runall" id="runAllBtn">Run All 5 Tiers (Auto) — 15 Images + CSV</button>
 <div class="status" id="status">Idle. Click "Run All" to automate, or use the tabs below to capture tiers manually.</div>
 
@@ -73,12 +71,14 @@
 
 <button class="csvbtn" id="csvBtn" disabled>Download ZIP (images + CSV)</button>
 
+<div class="tablewrap">
 <table id="resultsTable">
   <thead>
-    <tr><th>Camera</th><th>Tier</th><th>Requested</th><th>Actual</th><th>Format</th><th>File Size</th><th>Time</th></tr>
+    <tr><th>Tier</th><th>Requested</th><th>Actual</th><th>Format</th><th>File Size</th><th>Time</th></tr>
   </thead>
   <tbody id="resultsBody"></tbody>
 </table>
+</div>
 
 <div class="meta" id="deviceMeta"></div>
 
@@ -97,8 +97,8 @@ const FORMATS = [
 ];
 
 let currentStream = null;
-let currentFacingMode = 'environment'; // 'environment' = back camera, 'user' = front camera
-let results = []; // {tierKey, tierLabel, reqW, reqH, actW, actH, format, sizeBytes, time, camera}
+const FACING_MODE = 'environment'; // back camera only
+let results = []; // {tierKey, tierLabel, reqW, reqH, actW, actH, format, sizeBytes, time}
 let zipFiles = []; // {filename, blob} — collected in memory, bundled into one ZIP on demand
 
 const tabsEl = document.getElementById('tabs');
@@ -119,7 +119,7 @@ function timeStamp() {
 TIERS.forEach((tier, i) => {
   const tab = document.createElement('div');
   tab.className = 'tab' + (i === 0 ? ' active' : '');
-  tab.textContent = tier.label;
+  tab.textContent = tier.key;
   tab.dataset.key = tier.key;
   tab.onclick = () => selectTab(tier.key);
   tabsEl.appendChild(tab);
@@ -144,17 +144,6 @@ panelsEl.querySelectorAll('button.capture').forEach(btn => {
   btn.onclick = () => runTier(btn.dataset.key, { manual: true });
 });
 
-const camBackBtn = document.getElementById('camBackBtn');
-const camFrontBtn = document.getElementById('camFrontBtn');
-function setFacingMode(mode) {
-  currentFacingMode = mode;
-  camBackBtn.style.background = mode === 'environment' ? '#2962ff' : '#333';
-  camFrontBtn.style.background = mode === 'user' ? '#2962ff' : '#333';
-  setStatus(`Camera set to ${mode === 'environment' ? 'back' : 'front'}. Start a capture to apply.`);
-}
-camBackBtn.onclick = () => setFacingMode('environment');
-camFrontBtn.onclick = () => setFacingMode('user');
-
 function selectTab(key) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.key === key));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
@@ -173,7 +162,7 @@ async function startTierStream(tier) {
     video: {
       width: { ideal: tier.w },
       height: { ideal: tier.h },
-      facingMode: { ideal: currentFacingMode }
+      facingMode: { ideal: FACING_MODE }
     },
     audio: false
   };
@@ -224,7 +213,6 @@ function addResultRow(r) {
   results.push(r);
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td>${r.camera}</td>
     <td>${r.tierLabel}</td>
     <td>${r.reqW}×${r.reqH}</td>
     <td>${r.actW}×${r.actH}</td>
@@ -270,8 +258,7 @@ async function runTier(key, opts = {}) {
 
   for (const fmt of FORMATS) {
     const blob = await canvasToBlob(canvas, fmt);
-    const camLabel = currentFacingMode === 'environment' ? 'back' : 'front';
-    const filename = `camtest_${camLabel}_${tier.key}_actual${actW}x${actH}_${fmt.ext}_${ts}.${fmt.ext}`;
+    const filename = `camtest_back_${tier.key}_actual${actW}x${actH}_${fmt.ext}_${ts}.${fmt.ext}`;
     zipFiles.push({ filename, blob });
     addThumb(key, blob, fmt, actW, actH);
     addResultRow({
@@ -280,8 +267,7 @@ async function runTier(key, opts = {}) {
       actW, actH,
       format: fmt.ext,
       sizeBytes: blob.size,
-      time: new Date().toLocaleTimeString(),
-      camera: camLabel
+      time: new Date().toLocaleTimeString()
     });
   }
 
@@ -308,10 +294,9 @@ runAllBtn.onclick = async () => {
 };
 
 function buildCSV() {
-  const header = ['Camera', 'Tier', 'Requested WxH', 'Actual WxH', 'Format', 'Size (bytes)', 'Size (readable)', 'Time', 'User Agent'];
+  const header = ['Tier', 'Requested WxH', 'Actual WxH', 'Format', 'Size (bytes)', 'Size (readable)', 'Time', 'User Agent'];
   const ua = navigator.userAgent.replace(/,/g, ';');
   const rows = results.map(r => [
-    r.camera,
     r.tierLabel,
     `${r.reqW}x${r.reqH}`,
     `${r.actW}x${r.actH}`,
