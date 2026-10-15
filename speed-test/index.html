@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Blur Metric — Speed Test</title>
+<style>
+  :root{ --bg:#0b0d10; --card:#15181c; --line:#2a2f36; --text:#e8eaed; --sub:#9aa3ad; --accent:#4f9dff; --good:#2fbf71; --bad:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:480px;margin:0 auto;padding:16px;}
+  h1{font-size:18px;margin:8px 0 4px;}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:16px;}
+  video,canvas.preview{width:100%;border-radius:10px;background:#000;display:block;}
+  .row{display:flex;gap:10px;margin:12px 0;}
+  button{flex:1;padding:14px;border-radius:10px;border:none;font-size:15px;font-weight:600;cursor:pointer;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--line);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px;}
+  .metric{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .metric:last-child{border-bottom:none;}
+  .metric .label{color:var(--sub);}
+  .metric .val{font-weight:600;font-variant-numeric:tabular-nums;}
+  .big{font-size:28px;font-weight:700;text-align:center;margin:4px 0;}
+  .big.fast{color:var(--good);}
+  .big.slow{color:var(--bad);}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#1f2937;color:var(--sub);margin-top:8px;}
+  #log{font-size:12px;color:var(--sub);margin-top:10px;white-space:pre-wrap;}
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Blur Metric — Speed Test</h1>
+  <div class="sub">Captures a photo and times how long the full-frame blur metric takes on this device. No vehicle crop, no model, just the grid calculation.</div>
+
+  <video id="video" autoplay playsinline muted class="hidden"></video>
+  <canvas id="shotCanvas" class="preview hidden"></canvas>
+
+  <div class="row">
+    <button id="startBtn" class="btn-primary">Start Camera</button>
+  </div>
+  <div class="row hidden" id="captureRow">
+    <button id="autoRunBtn" class="btn-primary">Run Speed Test (5x / 10s)</button>
+    <button id="resetBtn" class="btn-secondary">Reset</button>
+  </div>
+  <div class="sub hidden" id="autoRunStatus" style="text-align:center;"></div>
+
+  <div class="card hidden" id="resultCard">
+    <div class="big" id="totalTime">—</div>
+    <div class="sub" style="text-align:center;margin-top:-6px;">total processing time</div>
+
+    <div class="metric"><span class="label">Image size (captured)</span><span class="val" id="imgSize">—</span></div>
+    <div class="metric"><span class="label">Downscale to grid (w×h)</span><span class="val" id="gridSize">—</span></div>
+    <div class="metric"><span class="label">getImageData (decode+read)</span><span class="val" id="tDecode">—</span></div>
+    <div class="metric"><span class="label">Downsample to grayscale</span><span class="val" id="tDownsample">—</span></div>
+    <div class="metric"><span class="label">Laplacian + Tenengrad pass</span><span class="val" id="tFilter">—</span></div>
+    <div class="metric"><span class="label">Total (capture → result)</span><span class="val" id="tTotal">—</span></div>
+
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px;">
+      <div class="metric"><span class="label">Blurry cells (out of 16)</span><span class="val" id="blurryCells">—</span></div>
+      <div class="metric"><span class="label">Whole-frame LapVar</span><span class="val" id="lapVar">—</span></div>
+      <div class="metric"><span class="label">Mean brightness</span><span class="val" id="brightness">—</span></div>
+    </div>
+    <div class="tag" id="deviceTag"></div>
+  </div>
+
+  <div class="card hidden" id="avgCard">
+    <div style="font-weight:700;margin-bottom:8px;">5-Run Speed Check</div>
+    <div class="metric"><span class="label">Run 1</span><span class="val" id="runVal1">—</span></div>
+    <div class="metric"><span class="label">Run 2</span><span class="val" id="runVal2">—</span></div>
+    <div class="metric"><span class="label">Run 3</span><span class="val" id="runVal3">—</span></div>
+    <div class="metric"><span class="label">Run 4</span><span class="val" id="runVal4">—</span></div>
+    <div class="metric"><span class="label">Run 5</span><span class="val" id="runVal5">—</span></div>
+    <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;">
+      <div class="big" id="avgTime">—</div>
+      <div class="sub" style="text-align:center;margin-top:-6px;">average processing speed</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ROWS=4, COLS=4, CELLS=16, MAXSIZE=200;
+const LAP1=630, TEN=12500, LAP2=900, GLARE_T=2000, BRIGHT=235;
+
+function analyseTimed(source){
+    const t0 = performance.now();
+    const sw = source.width, sh = source.height;
+    const fc = document.createElement('canvas'); fc.width = sw; fc.height = sh;
+    const fx = fc.getContext('2d', { willReadFrequently: true });
+    fx.drawImage(source, 0, 0);
+    const fullData = fx.getImageData(0, 0, sw, sh).data;
+    const t1 = performance.now();
+
+    const sc = Math.min(1, MAXSIZE / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+    const gray = new Uint8Array(w * h);
+    const xE = new Int32Array(w + 1); for (let d = 0; d <= w; d++) xE[d] = Math.floor((d * sw) / w);
+    const yE = new Int32Array(h + 1); for (let d = 0; d <= h; d++) yE[d] = Math.floor((d * sh) / h);
+    let bSum = 0;
+    for (let dy = 0; dy < h; dy++) {
+        const s0 = yE[dy], s1 = Math.min(sh, Math.max(s0 + 1, yE[dy + 1]));
+        for (let dx = 0; dx < w; dx++) {
+            const x0 = xE[dx], x1 = Math.min(sw, Math.max(x0 + 1, xE[dx + 1]));
+            let sum = 0, n = 0;
+            for (let sy = s0; sy < s1; sy++) { let i = ((sy * sw) + x0) * 4; for (let sx = x0; sx < x1; sx++, i += 4) { sum += .299*fullData[i] + .587*fullData[i+1] + .114*fullData[i+2]; n++; } }
+            gray[dy * w + dx] = sum / n; bSum += gray[dy*w+dx];
+        }
+    }
+    const t2 = performance.now();
+
+    const tw = w / COLS, th = h / ROWS, ce = [], re = [];
+    for (let k = 0; k <= COLS; k++) ce.push(Math.round(k * tw));
+    for (let k = 0; k <= ROWS; k++) re.push(Math.round(k * th));
+    const colOf = new Int8Array(w), rowOf = new Int8Array(h);
+    for (let k = 0; k < COLS; k++) for (let x = ce[k]; x < ce[k+1]; x++) colOf[x] = k;
+    for (let k = 0; k < ROWS; k++) for (let y = re[k]; y < re[k+1]; y++) rowOf[y] = k;
+
+    const ls = new Float64Array(CELLS), lq = new Float64Array(CELLS), lc = new Float64Array(CELLS), ts = new Float64Array(CELLS);
+    const bc = new Float64Array(CELLS), vc = new Float64Array(CELLS);
+    let gLapSum=0, gLapSq=0, gN=0;
+    for (let y = 0; y < h; y++) {
+        const rb = rowOf[y] * COLS;
+        for (let x = 0; x < w; x++) { const c = rb + colOf[x]; const g = gray[y*w+x]; vc[c]++; if (g>BRIGHT) bc[c]++; }
+    }
+    for (let y = 1; y < h - 1; y++) {
+        const rb = rowOf[y] * COLS;
+        for (let x = 1; x < w - 1; x++) {
+            const p = y * w + x;
+            const lap = gray[p-w] + gray[p-1] + gray[p+1] + gray[p+w] - 4*gray[p];
+            const gx = -gray[p-w-1]+gray[p-w+1]-2*gray[p-1]+2*gray[p+1]-gray[p+w-1]+gray[p+w+1];
+            const gy = -gray[p-w-1]-2*gray[p-w]-gray[p-w+1]+gray[p+w-1]+2*gray[p+w]+gray[p+w+1];
+            const t = gx*gx + gy*gy;
+            gLapSum+=lap; gLapSq+=lap*lap; gN++;
+            const c = rb + colOf[x]; ls[c]+=lap; lq[c]+=lap*lap; lc[c]++; ts[c]+=t;
+        }
+    }
+    const bv = (b, v) => { const p = v > 0 ? b / v : 0; return p * (1-p) * 255 * 255; };
+    let blurry = 0;
+    for (let i = 0; i < CELLS; i++) {
+        const n = lc[i]; if (!(n>0)) continue;
+        const mu = ls[i]/n; const lapVar = lq[i]/n - mu*mu; const ten = ts[i]/n;
+        const hasGlare = bv(bc[i], vc[i]) > GLARE_T;
+        if ((lapVar<LAP1) || (ten<TEN) || (lapVar<LAP2 && hasGlare)) blurry++;
+    }
+    const t3 = performance.now();
+
+    const wholeLapVar = gN ? (gLapSq/gN - Math.pow(gLapSum/gN,2)) : 0;
+    const meanBrightness = (w*h) ? bSum/(w*h) : 0;
+
+    return {
+        blurry, wholeLapVar: Math.round(wholeLapVar*10)/10, meanBrightness: Math.round(meanBrightness*10)/10,
+        w, h, sw, sh,
+        tDecode: t1-t0, tDownsample: t2-t1, tFilter: t3-t2, tTotal: t3-t0
+    };
+}
+
+const video = document.getElementById('video');
+const shotCanvas = document.getElementById('shotCanvas');
+const startBtn = document.getElementById('startBtn');
+const autoRunBtn = document.getElementById('autoRunBtn');
+const resetBtn = document.getElementById('resetBtn');
+const captureRow = document.getElementById('captureRow');
+const resultCard = document.getElementById('resultCard');
+const avgCard = document.getElementById('avgCard');
+const autoRunStatus = document.getElementById('autoRunStatus');
+let stream = null;
+let runTimes = [];
+
+startBtn.addEventListener('click', async () => {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:{ideal:1920}, height:{ideal:1080} }, audio:false });
+        video.srcObject = stream;
+        video.classList.remove('hidden');
+        startBtn.classList.add('hidden');
+        captureRow.classList.remove('hidden');
+    } catch(e){
+        alert('Camera access failed: ' + e.message);
+    }
+});
+
+function capture(){
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return null;
+    shotCanvas.width = w; shotCanvas.height = h;
+    const ctx = shotCanvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    shotCanvas.classList.remove('hidden');
+    return analyseTimed(shotCanvas);
+}
+
+function showResult(result){
+    document.getElementById('totalTime').textContent = result.tTotal.toFixed(1) + ' ms';
+    document.getElementById('totalTime').className = 'big ' + (result.tTotal < 100 ? 'fast' : 'slow');
+    document.getElementById('imgSize').textContent = `${result.sw} × ${result.sh}`;
+    document.getElementById('gridSize').textContent = `${result.w} × ${result.h}`;
+    document.getElementById('tDecode').textContent = result.tDecode.toFixed(1) + ' ms';
+    document.getElementById('tDownsample').textContent = result.tDownsample.toFixed(1) + ' ms';
+    document.getElementById('tFilter').textContent = result.tFilter.toFixed(1) + ' ms';
+    document.getElementById('tTotal').textContent = result.tTotal.toFixed(1) + ' ms';
+    document.getElementById('blurryCells').textContent = result.blurry + ' / 16';
+    document.getElementById('lapVar').textContent = result.wholeLapVar;
+    document.getElementById('brightness').textContent = result.meanBrightness;
+    document.getElementById('deviceTag').textContent = navigator.userAgent.slice(0, 80);
+    resultCard.classList.remove('hidden');
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+autoRunBtn.addEventListener('click', async () => {
+    autoRunBtn.disabled = true;
+    runTimes = [];
+    for (let i=1;i<=5;i++) document.getElementById('runVal'+i).textContent = '—';
+    avgCard.classList.add('hidden');
+    autoRunStatus.classList.remove('hidden');
+
+    const totalRuns = 5;
+    const spacingMs = 10000 / totalRuns; // 5 captures spread across first 10 seconds
+
+    for (let i = 1; i <= totalRuns; i++) {
+        autoRunStatus.textContent = `Capturing ${i} / ${totalRuns}...`;
+        const result = capture();
+        if (result) {
+            runTimes.push(result.tTotal);
+            showResult(result);
+            document.getElementById('runVal'+i).textContent = result.tTotal.toFixed(1) + ' ms';
+        }
+        if (i < totalRuns) await sleep(spacingMs);
+    }
+
+    const avg = runTimes.reduce((a,b)=>a+b,0) / runTimes.length;
+    document.getElementById('avgTime').textContent = avg.toFixed(1) + ' ms avg';
+    document.getElementById('avgTime').className = 'big ' + (avg < 100 ? 'fast' : 'slow');
+    avgCard.classList.remove('hidden');
+    autoRunStatus.textContent = 'Done — 5 runs completed.';
+    autoRunBtn.disabled = false;
+});
+
+resetBtn.addEventListener('click', () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    runTimes = [];
+    video.classList.add('hidden');
+    shotCanvas.classList.add('hidden');
+    captureRow.classList.add('hidden');
+    resultCard.classList.add('hidden');
+    avgCard.classList.add('hidden');
+    startBtn.classList.remove('hidden');
+});
+</script>
+</body>
+</html>
