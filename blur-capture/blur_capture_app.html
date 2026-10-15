@@ -29,6 +29,8 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
 #camOverlay{position:absolute;inset:0;pointer-events:none}
 #camStatus{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.55);padding:6px 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;gap:8px}
 #fullscreenBtn{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:16px;pointer-events:auto;display:flex;align-items:center;justify-content:center}
+#torchBtn{position:absolute;top:10px;right:54px;background:rgba(0,0,0,0.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:16px;pointer-events:auto;display:none;align-items:center;justify-content:center}
+#torchBtn.on{background:#fbbf24;color:#1a1200}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--mute)}
 .dot.live{background:var(--bad);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
@@ -115,6 +117,7 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
         <video id="video" playsinline muted autoplay></video>
         <div id="camOverlay">
             <div id="camStatus"><span class="dot" id="recDot"></span><span id="camStatusText">Camera off</span></div>
+            <button id="torchBtn" title="Flashlight">&#128161;</button>
             <button id="fullscreenBtn" title="Full screen">&#9974;</button>
         </div>
         <div id="captureFlash"></div>
@@ -310,6 +313,7 @@ async function loadModel() {
 }
 
 // ===================== camera =====================
+let torchOn = false;
 async function startCamera() {
     const video = document.getElementById('video');
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -319,10 +323,39 @@ async function startCamera() {
     video.srcObject = mediaStream;
     await video.play();
     document.getElementById('camStatusText').textContent = 'Camera live';
+    setupTorch();
 }
 function stopCamera() {
     if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+    torchOn = false;
+    const torchBtn = document.getElementById('torchBtn');
+    torchBtn.style.display = 'none';
+    torchBtn.classList.remove('on');
 }
+function setupTorch() {
+    const torchBtn = document.getElementById('torchBtn');
+    const track = mediaStream && mediaStream.getVideoTracks()[0];
+    const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+    if (caps && caps.torch) {
+        torchBtn.style.display = 'flex';
+    } else {
+        // not supported on this device/browser (e.g. iOS Safari has no torch API at all)
+        torchBtn.style.display = 'none';
+    }
+}
+async function toggleTorch() {
+    const track = mediaStream && mediaStream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+        torchOn = !torchOn;
+        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        document.getElementById('torchBtn').classList.toggle('on', torchOn);
+    } catch (err) {
+        torchOn = !torchOn; // revert, it failed
+        console.warn('Torch toggle failed:', err.message);
+    }
+}
+document.getElementById('torchBtn').addEventListener('click', toggleTorch);
 
 // ===================== capture + score one frame =====================
 async function captureAndScore() {
