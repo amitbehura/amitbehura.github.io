@@ -196,7 +196,7 @@ const ROWS=4, COLS=4, CELLS=16, MAXSIZE=200;
 const LAP1=630, TEN=12500, LAP2=900, GLARE_T=2000, BRIGHT=235;
 
 let tfliteModel = null, modelInputShape = null;
-let mediaStream = null, captureTimer = null, recording = false, frameIdx = 0;
+let mediaStream = null, captureTimer = null, recording = false, frameIdx = 0, discardedCount = 0;
 
 // ===================== blur analysis (grid + whole-region, shared by full-frame and crop) =====================
 function analyse(source) {
@@ -364,11 +364,39 @@ async function captureAndScore() {
         cropResult = analyse(cropCanvas);
     }
 
+    const v = evaluate(fullResult, cropResult);
+    if (v.overall) {
+        // filtered = removed: never kept, never shown
+        discardedCount++;
+        URL.revokeObjectURL(webpUrl);
+        showDiscardFlash();
+        updateTotals();
+        return;
+    }
+
     frameIdx++;
     addFrameCard(frameIdx, webpUrl, webpBlob, fullResult, cropResult, parts);
 }
 
-// ===================== UI: card + live recompute =====================
+function showDiscardFlash() {
+    const statusText = document.getElementById('camStatusText');
+    const prev = statusText.textContent;
+    statusText.textContent = 'Discarded (blurry)';
+    statusText.style.color = 'var(--bad)';
+    const flash = document.getElementById('captureFlash');
+    flash.style.background = '#f87171';
+    flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
+    setTimeout(() => {
+        statusText.textContent = recording ? 'Camera live' : prev;
+        statusText.style.color = '';
+        flash.style.background = '#fff';
+    }, 700);
+}
+
+// ===================== decision + UI =====================
+// Filter means remove: evaluated once at capture time against the thresholds
+// in effect right then. A filtered frame is discarded immediately, it is
+// never added to frames[], never shown in the feed/carousel, never zipped.
 const frames = [];
 function currentThresholds() {
     return {
@@ -377,10 +405,11 @@ function currentThresholds() {
         en8: document.getElementById('en8').checked, th8: parseFloat(document.getElementById('th8').value),
     };
 }
-function verdictFor(f, t) {
-    const m1 = f.fullResult.blurry;
-    const m3 = f.cropResult ? f.cropResult.blurry : null;
-    const m8 = f.cropResult ? f.cropResult.normScore : null;
+function evaluate(fullResult, cropResult) {
+    const t = currentThresholds();
+    const m1 = fullResult.blurry;
+    const m3 = cropResult ? cropResult.blurry : null;
+    const m8 = cropResult ? cropResult.normScore : null;
     const f1 = t.en1 && m1 >= t.th1;
     const f3 = t.en3 && m3 !== null && m3 >= t.th3;
     const f8 = t.en8 && m8 !== null && m8 < t.th8;
@@ -389,61 +418,37 @@ function verdictFor(f, t) {
 function addFrameCard(num, imgUrl, blob, fullResult, cropResult, parts) {
     const feed = document.getElementById('feed');
     const emptyEl = feed.querySelector('.empty'); if (emptyEl) emptyEl.remove();
+    const v = evaluate(fullResult, cropResult);
 
     const card = document.createElement('div');
     card.className = 'frameCard';
     card.innerHTML = `
         <img src="${imgUrl}">
         <div class="frameMeta">
-            <div class="top"><span class="num">#${num}</span><span class="tag"></span></div>
-            <div class="row" data-m="1"><span>1. Grid</span><b></b></div>
-            <div class="row" data-m="3"><span>3. V-crop Grid</span><b></b></div>
-            <div class="row" data-m="8"><span>8. V-crop Norm</span><b></b></div>
+            <div class="top"><span class="num">#${num}</span><span class="tag clear">PASS</span></div>
+            <div class="row"><span>1. Grid</span><b>${v.m1}/16</b></div>
+            <div class="row"><span>3. V-crop Grid</span><b>${v.m3 !== null ? v.m3 + '/16' : '-'}</b></div>
+            <div class="row"><span>8. V-crop Norm</span><b>${v.m8 !== null ? Math.round(v.m8) : '-'}</b></div>
             <div class="row"><span>Parts</span><b>${parts}</b></div>
         </div>`;
     feed.insertBefore(card, feed.firstChild);
 
     frames.push({ num, card, blob, imgUrl, fullResult, cropResult, parts });
-    recomputeAll();
+    updateTotals();
 }
-function recomputeAll() {
-    const t = currentThresholds();
-    let total = 0, filtered = 0;
-    for (const f of frames) {
-        total++;
-        const v = verdictFor(f, t);
-        if (v.overall) filtered++;
-        f.card.classList.toggle('filtered', v.overall);
-        const tag = f.card.querySelector('.tag');
-        tag.textContent = v.overall ? 'FILTER' : 'PASS';
-        tag.className = 'tag ' + (v.overall ? 'block' : 'clear');
-
-        const r1 = f.card.querySelector('[data-m="1"] b');
-        r1.textContent = `${v.m1}/16` + (t.en1 ? (v.f1 ? ' TRUE' : '') : '');
-        f.card.querySelector('[data-m="1"]').classList.toggle('hit', v.f1);
-
-        const r3 = f.card.querySelector('[data-m="3"] b');
-        r3.textContent = v.m3 !== null ? `${v.m3}/16` + (t.en3 ? (v.f3 ? ' TRUE' : '') : '') : '-';
-        f.card.querySelector('[data-m="3"]').classList.toggle('hit', v.f3);
-
-        const r8 = f.card.querySelector('[data-m="8"] b');
-        r8.textContent = v.m8 !== null ? `${Math.round(v.m8)}` + (t.en8 ? (v.f8 ? ' TRUE' : '') : '') : '-';
-        f.card.querySelector('[data-m="8"]').classList.toggle('hit', v.f8);
-    }
-    document.getElementById('tTotal').textContent = total;
-    document.getElementById('tFiltered').textContent = filtered;
-    document.getElementById('tPass').textContent = total - filtered;
+function updateTotals() {
+    const kept = frames.length;
+    document.getElementById('tTotal').textContent = kept + discardedCount;
+    document.getElementById('tFiltered').textContent = discardedCount;
+    document.getElementById('tPass').textContent = kept;
 
     const viewBtn = document.getElementById('viewBtn');
     const viewBadge = document.getElementById('viewBadge');
-    viewBtn.disabled = total === 0;
-    viewBadge.style.display = total ? 'flex' : 'none';
-    viewBadge.textContent = total;
+    viewBtn.disabled = kept === 0;
+    viewBadge.style.display = kept ? 'flex' : 'none';
+    viewBadge.textContent = kept;
     if (carouselOpen) renderCarouselSlide();
 }
-['en1','th1','en3','th3','en8','th8'].forEach(id => {
-    document.getElementById(id).addEventListener('input', recomputeAll);
-});
 
 // ===================== start/stop =====================
 document.getElementById('mainBtn').addEventListener('click', async () => {
@@ -482,13 +487,12 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
     dlBtn.textContent = 'Zipping…';
     try {
         const zip = new JSZip();
-        const t = currentThresholds();
-        const rows = ['frame,verdict,metric1_blurry,metric3_blurry,metric8_norm'];
+        const rows = ['frame,metric1_blurry,metric3_blurry,metric8_norm,parts'];
         for (const f of frames) {
-            const v = verdictFor(f, t);
+            const v = evaluate(f.fullResult, f.cropResult);
             const name = `frame_${String(f.num).padStart(3,'0')}.webp`;
             zip.file(name, f.blob);
-            rows.push(`${f.num},${v.overall ? 'FILTER' : 'PASS'},${v.m1},${v.m3 ?? ''},${v.m8 !== null ? Math.round(v.m8) : ''}`);
+            rows.push(`${f.num},${v.m1},${v.m3 ?? ''},${v.m8 !== null ? Math.round(v.m8) : ''},${f.parts}`);
         }
         zip.file('metrics.csv', rows.join('\n'));
         const blob = await zip.generateAsync({ type: 'blob' });
@@ -506,10 +510,11 @@ document.getElementById('newSessionBtn').addEventListener('click', () => {
     closeCarousel();
     frames.length = 0;
     frameIdx = 0;
+    discardedCount = 0;
     document.getElementById('feed').innerHTML = '<div class="empty">Captured frames will appear here</div>';
     document.getElementById('reviewBtns').classList.remove('show');
     document.getElementById('mainBtn').disabled = false;
-    recomputeAll();
+    updateTotals();
 });
 
 // ===================== carousel =====================
@@ -531,19 +536,18 @@ function renderCarouselSlide() {
     if (!frames.length) { closeCarousel(); return; }
     carouselIndex = Math.max(0, Math.min(carouselIndex, frames.length - 1));
     const f = frames[carouselIndex];
-    const t = currentThresholds();
-    const v = verdictFor(f, t);
+    const v = evaluate(f.fullResult, f.cropResult);
 
     document.getElementById('carouselImg').src = f.imgUrl;
     document.getElementById('carouselIdx').textContent = `${carouselIndex + 1} / ${frames.length}`;
     document.getElementById('carouselNum').textContent = `#${f.num}`;
     const tag = document.getElementById('carouselTag');
-    tag.textContent = v.overall ? 'FILTER' : 'PASS';
-    tag.className = 'tag ' + (v.overall ? 'block' : 'clear');
+    tag.textContent = 'PASS';
+    tag.className = 'tag clear';
 
-    const cM1 = document.getElementById('cM1'); cM1.textContent = `${v.m1}/16`; cM1.className = 'val' + (v.f1 ? ' hit' : '');
-    const cM3 = document.getElementById('cM3'); cM3.textContent = v.m3 !== null ? `${v.m3}/16` : '-'; cM3.className = 'val' + (v.f3 ? ' hit' : '');
-    const cM8 = document.getElementById('cM8'); cM8.textContent = v.m8 !== null ? Math.round(v.m8) : '-'; cM8.className = 'val' + (v.f8 ? ' hit' : '');
+    document.getElementById('cM1').textContent = `${v.m1}/16`;
+    document.getElementById('cM3').textContent = v.m3 !== null ? `${v.m3}/16` : '-';
+    document.getElementById('cM8').textContent = v.m8 !== null ? Math.round(v.m8) : '-';
     document.getElementById('cParts').textContent = f.parts;
 
     document.getElementById('carouselPrev').disabled = carouselIndex === 0;
