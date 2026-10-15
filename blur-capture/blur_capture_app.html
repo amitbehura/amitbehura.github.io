@@ -46,15 +46,39 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
 .ctrl input[type=checkbox]{width:14px;height:14px;flex-shrink:0}
 .ctrl input[type=number]{width:62px;padding:3px 5px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink);font-size:11px}
 
-#mainBtn{margin:12px 12px 6px;padding:14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:15px;font-weight:700}
+#btnRow{display:flex;gap:8px;margin:12px 12px 6px}
+#mainBtn{flex:1;padding:14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:15px;font-weight:700}
 #mainBtn.recording{background:var(--bad)}
 #mainBtn:disabled{opacity:0.5}
+#viewBtn{flex:0 0 52px;border:none;border-radius:12px;background:var(--line);color:var(--ink);font-size:20px;position:relative}
+#viewBtn:disabled{opacity:0.4}
+#viewBtn .badge{position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;font-size:10px;font-weight:700;border-radius:999px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 4px}
 #reviewBtns{display:none;gap:8px;margin:0 12px 10px}
 #reviewBtns.show{display:flex}
 #reviewBtns button{flex:1;padding:11px;border:none;border-radius:10px;font-size:13px;font-weight:700}
 #downloadBtn{background:var(--ok);color:#06240f}
 #downloadBtn:disabled{opacity:0.5}
 #newSessionBtn{background:var(--line);color:var(--ink)}
+
+/* ---- fullscreen carousel ---- */
+#carousel{position:fixed;inset:0;background:#000;z-index:2000;display:none;flex-direction:column}
+#carousel.show{display:flex}
+#carouselTop{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04)}
+#carouselTop .idx{font-size:13px;color:var(--mute)}
+#carouselClose{background:none;border:none;color:#fff;font-size:22px;padding:4px 10px}
+#carouselStage{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:pan-y}
+#carouselStage img{max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none}
+.carouselNav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.5);border:none;color:#fff;width:44px;height:44px;border-radius:50%;font-size:20px}
+#carouselPrev{left:10px}
+#carouselNext{right:10px}
+.carouselNav:disabled{opacity:0.25}
+#carouselMeta{background:rgba(255,255,255,0.04);padding:10px 16px calc(14px + env(safe-area-inset-bottom));max-height:34vh;overflow-y:auto}
+#carouselMeta .ctop{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+#carouselMeta .ctop .num{font-weight:700;font-size:16px}
+#carouselMeta table{width:100%;border-collapse:collapse;font-size:13px}
+#carouselMeta td{padding:5px 0;border-bottom:1px solid var(--line)}
+#carouselMeta td.val{text-align:right;font-weight:700}
+#carouselMeta td.hit{color:var(--bad)}
 #modelStatus{padding:0 12px 8px;font-size:11px;color:var(--mute)}
 
 #totals{display:flex;gap:8px;padding:0 12px 10px}
@@ -118,7 +142,10 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
         </div>
 
         <div id="modelStatus">Loading part-detector model&hellip;</div>
-        <button id="mainBtn" disabled>Start Camera</button>
+        <div id="btnRow">
+            <button id="mainBtn" disabled>Start Camera</button>
+            <button id="viewBtn" disabled title="View captures">&#9635;<span class="badge" id="viewBadge" style="display:none">0</span></button>
+        </div>
         <div id="reviewBtns">
             <button id="downloadBtn">Download ZIP</button>
             <button id="newSessionBtn">New Session</button>
@@ -130,6 +157,28 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
         </div>
 
         <div id="feed"><div class="empty">Captured frames will appear here</div></div>
+    </div>
+</div>
+
+<div id="carousel">
+    <div id="carouselTop">
+        <button id="carouselClose">&#10005;</button>
+        <span class="idx" id="carouselIdx"></span>
+        <span style="width:30px"></span>
+    </div>
+    <div id="carouselStage">
+        <button class="carouselNav" id="carouselPrev">&#8249;</button>
+        <img id="carouselImg" src="">
+        <button class="carouselNav" id="carouselNext">&#8250;</button>
+    </div>
+    <div id="carouselMeta">
+        <div class="ctop"><span class="num" id="carouselNum"></span><span class="tag" id="carouselTag"></span></div>
+        <table>
+            <tr><td>1. Grid (w/Ten)</td><td class="val" id="cM1"></td></tr>
+            <tr><td>3. Vehicle-crop Grid (w/Ten)</td><td class="val" id="cM3"></td></tr>
+            <tr><td>8. Vehicle-crop Norm Score</td><td class="val" id="cM8"></td></tr>
+            <tr><td>Parts detected</td><td class="val" id="cParts"></td></tr>
+        </table>
     </div>
 </div>
 
@@ -354,7 +403,7 @@ function addFrameCard(num, imgUrl, blob, fullResult, cropResult, parts) {
         </div>`;
     feed.insertBefore(card, feed.firstChild);
 
-    frames.push({ num, card, blob, fullResult, cropResult });
+    frames.push({ num, card, blob, imgUrl, fullResult, cropResult, parts });
     recomputeAll();
 }
 function recomputeAll() {
@@ -384,6 +433,13 @@ function recomputeAll() {
     document.getElementById('tTotal').textContent = total;
     document.getElementById('tFiltered').textContent = filtered;
     document.getElementById('tPass').textContent = total - filtered;
+
+    const viewBtn = document.getElementById('viewBtn');
+    const viewBadge = document.getElementById('viewBadge');
+    viewBtn.disabled = total === 0;
+    viewBadge.style.display = total ? 'flex' : 'none';
+    viewBadge.textContent = total;
+    if (carouselOpen) renderCarouselSlide();
 }
 ['en1','th1','en3','th3','en8','th8'].forEach(id => {
     document.getElementById(id).addEventListener('input', recomputeAll);
@@ -447,6 +503,7 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('newSessionBtn').addEventListener('click', () => {
+    closeCarousel();
     frames.length = 0;
     frameIdx = 0;
     document.getElementById('feed').innerHTML = '<div class="empty">Captured frames will appear here</div>';
@@ -454,6 +511,66 @@ document.getElementById('newSessionBtn').addEventListener('click', () => {
     document.getElementById('mainBtn').disabled = false;
     recomputeAll();
 });
+
+// ===================== carousel =====================
+let carouselOpen = false;
+let carouselIndex = 0;
+
+function openCarousel() {
+    if (!frames.length) return;
+    carouselOpen = true;
+    carouselIndex = frames.length - 1; // start on most recent capture
+    document.getElementById('carousel').classList.add('show');
+    renderCarouselSlide();
+}
+function closeCarousel() {
+    carouselOpen = false;
+    document.getElementById('carousel').classList.remove('show');
+}
+function renderCarouselSlide() {
+    if (!frames.length) { closeCarousel(); return; }
+    carouselIndex = Math.max(0, Math.min(carouselIndex, frames.length - 1));
+    const f = frames[carouselIndex];
+    const t = currentThresholds();
+    const v = verdictFor(f, t);
+
+    document.getElementById('carouselImg').src = f.imgUrl;
+    document.getElementById('carouselIdx').textContent = `${carouselIndex + 1} / ${frames.length}`;
+    document.getElementById('carouselNum').textContent = `#${f.num}`;
+    const tag = document.getElementById('carouselTag');
+    tag.textContent = v.overall ? 'FILTER' : 'PASS';
+    tag.className = 'tag ' + (v.overall ? 'block' : 'clear');
+
+    const cM1 = document.getElementById('cM1'); cM1.textContent = `${v.m1}/16`; cM1.className = 'val' + (v.f1 ? ' hit' : '');
+    const cM3 = document.getElementById('cM3'); cM3.textContent = v.m3 !== null ? `${v.m3}/16` : '-'; cM3.className = 'val' + (v.f3 ? ' hit' : '');
+    const cM8 = document.getElementById('cM8'); cM8.textContent = v.m8 !== null ? Math.round(v.m8) : '-'; cM8.className = 'val' + (v.f8 ? ' hit' : '');
+    document.getElementById('cParts').textContent = f.parts;
+
+    document.getElementById('carouselPrev').disabled = carouselIndex === 0;
+    document.getElementById('carouselNext').disabled = carouselIndex === frames.length - 1;
+}
+document.getElementById('viewBtn').addEventListener('click', openCarousel);
+document.getElementById('carouselClose').addEventListener('click', closeCarousel);
+document.getElementById('carouselPrev').addEventListener('click', () => { carouselIndex--; renderCarouselSlide(); });
+document.getElementById('carouselNext').addEventListener('click', () => { carouselIndex++; renderCarouselSlide(); });
+
+// swipe gesture
+(() => {
+    const stage = document.getElementById('carouselStage');
+    let startX = 0, startY = 0, tracking = false;
+    stage.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY; tracking = true;
+    }, { passive: true });
+    stage.addEventListener('touchend', e => {
+        if (!tracking) return; tracking = false;
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = e.changedTouches[0].clientY - startY;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+            if (dx < 0 && carouselIndex < frames.length - 1) { carouselIndex++; renderCarouselSlide(); }
+            else if (dx > 0 && carouselIndex > 0) { carouselIndex--; renderCarouselSlide(); }
+        }
+    }, { passive: true });
+})();
 
 // ===================== fullscreen toggle =====================
 function isFullscreen() {
