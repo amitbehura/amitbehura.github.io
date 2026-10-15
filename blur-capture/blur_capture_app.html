@@ -31,6 +31,9 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
 #fullscreenBtn{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:16px;pointer-events:auto;display:flex;align-items:center;justify-content:center}
 #torchBtn{position:absolute;top:10px;right:54px;background:rgba(0,0,0,0.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:16px;pointer-events:auto;display:none;align-items:center;justify-content:center}
 #torchBtn.on{background:#fbbf24;color:#1a1200}
+#torchBtn.unsupported{opacity:0.35}
+#torchMsg{position:absolute;top:50px;right:10px;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;padding:6px 10px;border-radius:8px;max-width:220px;text-align:right;display:none}
+#torchMsg.show{display:block}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--mute)}
 .dot.live{background:var(--bad);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
@@ -119,6 +122,7 @@ body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,s
             <div id="camStatus"><span class="dot" id="recDot"></span><span id="camStatusText">Camera off</span></div>
             <button id="torchBtn" title="Flashlight">&#128161;</button>
             <button id="fullscreenBtn" title="Full screen">&#9974;</button>
+            <div id="torchMsg"></div>
         </div>
         <div id="captureFlash"></div>
     </div>
@@ -333,25 +337,31 @@ function stopCamera() {
     torchBtn.classList.remove('on');
 }
 function setupTorch() {
-    const torchBtn = document.getElementById('torchBtn');
-    const track = mediaStream && mediaStream.getVideoTracks()[0];
-    const caps = track && track.getCapabilities ? track.getCapabilities() : null;
-    if (caps && caps.torch) {
-        torchBtn.style.display = 'flex';
-    } else {
-        // not supported on this device/browser (e.g. iOS Safari has no torch API at all)
-        torchBtn.style.display = 'none';
-    }
+    // getCapabilities()/getSettings() unreliably report `torch` on iOS Safari
+    // even when the device supports it (WebKit bugs 270779, 280970), so we
+    // don't gate visibility on a capability check. Always offer the button
+    // once the camera is live, and find out by actually trying to apply it.
+    document.getElementById('torchBtn').style.display = 'flex';
+    document.getElementById('torchBtn').classList.remove('unsupported');
+}
+function showTorchMsg(text) {
+    const msg = document.getElementById('torchMsg');
+    msg.textContent = text;
+    msg.classList.add('show');
+    clearTimeout(showTorchMsg._t);
+    showTorchMsg._t = setTimeout(() => msg.classList.remove('show'), 2500);
 }
 async function toggleTorch() {
     const track = mediaStream && mediaStream.getVideoTracks()[0];
     if (!track) return;
+    const next = !torchOn;
     try {
-        torchOn = !torchOn;
-        await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        await track.applyConstraints({ advanced: [{ torch: next }] });
+        torchOn = next;
         document.getElementById('torchBtn').classList.toggle('on', torchOn);
     } catch (err) {
-        torchOn = !torchOn; // revert, it failed
+        document.getElementById('torchBtn').classList.add('unsupported');
+        showTorchMsg('Flashlight not supported on this camera/browser.');
         console.warn('Torch toggle failed:', err.message);
     }
 }
