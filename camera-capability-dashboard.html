@@ -133,6 +133,10 @@ const DEFS = {
   exposureCompensation:{label:'Exposure compensation', group:'groupExposure', fmt:c=>`range ${c.min} to ${c.max}, step ${c.step}`},
   exposureTime:      {label:'Shutter speed (exposureTime)', group:'groupExposure', fmt:c=>`range ${c.min}–${c.max}`},
   iso:               {label:'ISO', group:'groupExposure', fmt:c=>`range ${c.min}–${c.max}`},
+  pointsOfInterest:  {label:'Points of interest (spot metering/focus)', group:'groupExposure', fmt:c=>{
+    if(Array.isArray(c)) return c.length ? JSON.stringify(c) : 'supported, no fixed point list';
+    try{ return JSON.stringify(c); }catch(e){ return 'supported (shape unknown)'; }
+  }},
 
   focusMode:         {label:'Focus mode', group:'groupFocus', fmt:c=>Array.isArray(c)?c.join(', '):String(c)},
   focusDistance:     {label:'Focus distance', group:'groupFocus', fmt:c=>`range ${c.min}–${c.max}, step ${c.step}`},
@@ -206,7 +210,8 @@ function renderGroups(caps, settings){
       if(supported) detail = def.fmt(caps[key]);
     }catch(e){ detail = 'supported (detail unavailable)'; }
 
-    const currentVal = settings[key] !== undefined ? `current: ${settings[key]}` : '';
+    const rawCurrent = settings[key];
+    const currentVal = rawCurrent !== undefined ? `current: ${typeof rawCurrent === 'object' ? JSON.stringify(rawCurrent) : rawCurrent}` : '';
 
     const row = document.createElement('div');
     row.className = 'row';
@@ -232,7 +237,7 @@ function renderGroups(caps, settings){
 }
 
 function renderSummary(counts){
-  document.getElementById('sumExp').textContent = counts.groupExposure + ' / 4';
+  document.getElementById('sumExp').textContent = counts.groupExposure + ' / 5';
   document.getElementById('sumFocus').textContent = counts.groupFocus + ' / 2';
   document.getElementById('sumColor').textContent = counts.groupColor + ' / 6';
   document.getElementById('sumTotal').textContent = counts.total + ' / ' + counts.totalChecked;
