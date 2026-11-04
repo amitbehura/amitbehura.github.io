@@ -286,6 +286,7 @@
   const downloadZipBtn = $('downloadZipBtn'), restartBtn = $('restartBtn');
 
   let stream = null, track = null, torchCapable = false, torchOn = false;
+  let imageCaptureFlashSupported = false;
   let mode = 'torch'; // 'torch' | 'flash'
   let shots = [];
   let capturing = false, loopRunning = false;
@@ -357,6 +358,20 @@
     torchUnsupported.textContent = 'no torch on this device/browser';
     torchUnsupported.style.display = torchCapable ? 'none' : 'block';
     torchToggle.disabled = !torchCapable;
+
+    // ImageCapture + native flash (fillLightMode) capability — Chromium/Android only, never iOS
+    // Safari (no ImageCapture at all there). Where it's supported it's a real improvement for
+    // Flash mode: the camera driver fires and times the flash itself instead of us manually
+    // toggling torch and guessing/polling for the right moment. Where unsupported, Flash mode
+    // falls back to the existing torch-pulse + brightest-frame-polling approach unchanged.
+    imageCaptureFlashSupported = false;
+    try {
+      if (window.ImageCapture) {
+        const ic = new ImageCapture(track);
+        const photoCaps = await ic.getPhotoCapabilities();
+        imageCaptureFlashSupported = !!(photoCaps.fillLightMode && photoCaps.fillLightMode.includes('flash'));
+      }
+    } catch (e) { imageCaptureFlashSupported = false; }
   });
 
   function checkOrientation() {
@@ -528,6 +543,27 @@
     return { result: bestResult, peakBrightness: bestBrightness, waitedMs: Math.round(performance.now() - start), exitReason };
   }
 
+  // ---------------- native flash capture via ImageCapture (Chromium/Android only) ----------------
+  // Where supported, the camera driver fires and times the flash itself during takePhoto() —
+  // no manual torch toggling or brightness polling needed. Not available on iOS Safari at all
+  // (no ImageCapture there), so Flash mode falls back to captureBrightestFrame() + manual torch
+  // pulse on any device/browser where this isn't supported or where it throws.
+  async function captureViaImageCaptureFlash() {
+    const imageCapture = new ImageCapture(track);
+    const blob = await imageCapture.takePhoto({ fillLightMode: 'flash' });
+    const bitmap = await createImageBitmap(blob);
+    const bw = bitmap.width, bh = bitmap.height;
+    const scale = Math.min(1, 480 / Math.max(bw, bh));
+    const w = Math.max(1, Math.round(bw * scale)), h = Math.max(1, Math.round(bh * scale));
+    workCanvas.width = w; workCanvas.height = h;
+    const ctx = workCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    if (bitmap.close) bitmap.close();
+    const brightness = measureBrightness(ctx, w, h);
+    const dataUrl = workCanvas.toDataURL('image/jpeg', 0.82);
+    return { dataUrl, brightness };
+  }
+
   // ---------------- shutter: continuous capture, like a camera app ----------------
   // Tap to start a capture loop that keeps shooting (respecting the processing-delay
   // gap between frames) until tapped again (pause) or Stop is pressed.
@@ -592,14 +628,29 @@
     const usedMode = mode;
 
     if (usedMode === 'flash') {
-      // pulse: on immediately before capture, off immediately after — independent of processing delay
-      await setTorch(true);
       flashOverlay.classList.add('firing');
-      const peak = await captureBrightestFrame(); // picks the brightest frame seen, see above
-      await setTorch(false);
+      let result = null, peak = null, method = 'manual-pulse';
+
+      if (imageCaptureFlashSupported) {
+        try {
+          result = await captureViaImageCaptureFlash(); // native, device-synced flash — no manual torch handling
+          method = 'imagecapture-flash';
+        } catch (e) {
+          result = null; // fall through to the manual pulse below
+        }
+      }
+
+      if (!result) {
+        // manual pulse: on immediately before capture, off immediately after — independent of processing delay
+        await setTorch(true);
+        peak = await captureBrightestFrame(); // picks the brightest frame seen, see above
+        result = peak.result;
+        await setTorch(false);
+      }
+
       flashOverlay.classList.remove('firing');
       await runProcessingDelay(latencyMs);
-      addShot(usedMode, peak.result, latencyMs, peak);
+      addShot(usedMode, result, latencyMs, peak, method);
     } else {
       // torch mode: whatever persistent torch state is already set, just capture
       const result = grabFrame();
@@ -615,7 +666,7 @@
     processingToast.classList.remove('show');
   }
 
-  function addShot(usedMode, result, latencyMs, peak) {
+  function addShot(usedMode, result, latencyMs, peak, method) {
     const shot = {
       mode: usedMode,
       brightness: result.brightness,
@@ -623,6 +674,7 @@
       latencyMs,
       peakWaitMs: peak ? peak.waitedMs : null,
       peakExitReason: peak ? peak.exitReason : null,
+      method: method || null,
       ts: new Date().toLocaleTimeString()
     };
     shots.unshift(shot);
@@ -644,6 +696,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+          ${s.method ? `<div>Via: ${s.method}</div>` : ''}
           ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
         </div>
       </div>
@@ -668,6 +721,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()} #${shots.length - i}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+          ${s.method ? `<div>Via: ${s.method}</div>` : ''}
           ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
         </div>
       </div>
@@ -681,12 +735,12 @@
     downloadZipBtn.textContent = 'Zipping…';
     try {
       const zip = new JSZip();
-      const manifestLines = ['index,mode,brightness,delay_ms,peak_wait_ms,peak_exit_reason,time'];
+      const manifestLines = ['index,mode,brightness,delay_ms,method,peak_wait_ms,peak_exit_reason,time'];
       shots.slice().reverse().forEach((s, idx) => {
         const n = idx + 1;
         const base64 = s.dataUrl.split(',')[1];
         zip.file(`shot_${String(n).padStart(3,'0')}_${s.mode}.jpg`, base64, { base64: true });
-        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.peakWaitMs !== null ? s.peakWaitMs : ''},${s.peakExitReason || ''},${s.ts}`);
+        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.method || ''},${s.peakWaitMs !== null ? s.peakWaitMs : ''},${s.peakExitReason || ''},${s.ts}`);
       });
       zip.file('manifest.csv', manifestLines.join('\n'));
       const blob = await zip.generateAsync({ type: 'blob' });
