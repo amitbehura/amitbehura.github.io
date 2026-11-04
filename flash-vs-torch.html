@@ -85,6 +85,17 @@
   #flashOverlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:40; transition:opacity .08s linear; }
   #flashOverlay.firing { opacity:.9; }
 
+  /* Torch-mode start sequence: torch on, then a 3-2-1 countdown, THEN capture begins.
+     Gives the torch time to actually engage and gives you a clear window to look at the
+     physical LED and confirm it's on before any frames start recording. */
+  #countdownOverlay {
+    position:fixed; inset:0; z-index:48; display:none; align-items:center; justify-content:center;
+    flex-direction:column; gap:10px; background:rgba(0,0,0,.6); pointer-events:none;
+  }
+  #countdownOverlay.show { display:flex; }
+  #countdownOverlay .num { font-size:96px; font-weight:800; color:#fff; line-height:1; }
+  #countdownOverlay .label { font-size:13px; color:#facc15; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+
   /* processing toast */
   #processingToast {
     position:fixed; left:50%; top:16px; transform:translate(-50%,-140%); z-index:45;
@@ -215,6 +226,10 @@
 </div>
 
 <div id="flashOverlay"></div>
+<div id="countdownOverlay">
+  <div class="label">Torch on &mdash; check the LED</div>
+  <div class="num" id="countdownNum">3</div>
+</div>
 <div id="processingToast"><span class="spinner"></span><span id="processingLabel">Processing… 300 ms</span></div>
 
 <div id="gallery">
@@ -261,6 +276,7 @@
   const latencySlider = $('latencySlider'), latencyVal = $('latencyVal');
   const shutter = $('shutter');
   const flashOverlay = $('flashOverlay');
+  const countdownOverlay = $('countdownOverlay'), countdownNum = $('countdownNum');
   const processingToast = $('processingToast'), processingLabel = $('processingLabel');
   const galleryHandle = $('galleryHandle'), galleryCount = $('galleryCount');
   const gallery = $('gallery'), galleryClose = $('galleryClose'), galleryList = $('galleryList'), galleryEmpty = $('galleryEmpty');
@@ -350,9 +366,13 @@
   }
 
   exitBtn.addEventListener('click', stopSession);
-  function stopSession() {
+  async function stopSession() {
     capturing = false;
+    starting = false;
+    shutter.classList.remove('busy');
+    countdownOverlay.classList.remove('show');
     setShutterUI();
+    if (torchOn) { try { await setTorch(false); } catch (e) {} }
     if (stream) stream.getTracks().forEach(t => t.stop());
     try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
@@ -502,11 +522,42 @@
   // ---------------- shutter: continuous capture, like a camera app ----------------
   // Tap to start a capture loop that keeps shooting (respecting the processing-delay
   // gap between frames) until tapped again (pause) or Stop is pressed.
-  shutter.addEventListener('click', () => {
-    capturing = !capturing;
-    setShutterUI();
-    if (capturing) runCaptureLoop();
+  //
+  // Torch mode specifically runs a start sequence: turn torch on -> 3,2,1 countdown ->
+  // THEN begin capturing. This gives the torch a guaranteed window to actually engage
+  // and gives you a clear few seconds to look at the physical LED and confirm it's lit
+  // before any frames get recorded, instead of relying on a background toggle tap.
+  let starting = false;
+  shutter.addEventListener('click', async () => {
+    if (starting) return; // ignore taps mid start-sequence
+    if (!capturing) {
+      if (mode === 'torch') {
+        starting = true;
+        shutter.classList.add('busy');
+        shutterHint.textContent = 'Turning on torch…';
+        await setTorch(true);
+        await runCountdown();
+        shutter.classList.remove('busy');
+        starting = false;
+      }
+      capturing = true;
+      setShutterUI();
+      runCaptureLoop();
+    } else {
+      capturing = false;
+      setShutterUI();
+      if (mode === 'torch' && torchOn) setTorch(false);
+    }
   });
+
+  async function runCountdown() {
+    countdownOverlay.classList.add('show');
+    for (const n of [3, 2, 1]) {
+      countdownNum.textContent = n;
+      await sleep(700);
+    }
+    countdownOverlay.classList.remove('show');
+  }
 
   function setShutterUI() {
     shutter.classList.toggle('capturing', capturing);
