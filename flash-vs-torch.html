@@ -81,10 +81,6 @@
   #shutter.capturing::after { inset:23px; border-radius:6px; background:#ef4444; }
   #shutterHint { position:absolute; left:50%; bottom:-20px; transform:translateX(-50%); font-size:10px; color:#9aa0a6; white-space:nowrap; }
 
-  /* flash pulse overlay */
-  #flashOverlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:40; transition:opacity .08s linear; }
-  #flashOverlay.firing { opacity:.9; }
-
   /* Torch-mode start sequence: torch on, then a 3-2-1 countdown, THEN capture begins.
      Gives the torch time to actually engage and gives you a clear window to look at the
      physical LED and confirm it's on before any frames start recording. */
@@ -225,7 +221,6 @@
   </div>
 </div>
 
-<div id="flashOverlay"></div>
 <div id="countdownOverlay">
   <div class="label">Torch on &mdash; check the LED</div>
   <div class="num" id="countdownNum">3</div>
@@ -275,7 +270,6 @@
   const exitBtn = $('exitBtn');
   const latencySlider = $('latencySlider'), latencyVal = $('latencyVal');
   const shutter = $('shutter');
-  const flashOverlay = $('flashOverlay');
   const countdownOverlay = $('countdownOverlay'), countdownNum = $('countdownNum');
   const processingToast = $('processingToast'), processingLabel = $('processingLabel');
   const galleryHandle = $('galleryHandle'), galleryCount = $('galleryCount');
@@ -611,11 +605,9 @@
       // framing from the live preview (confirmed: wide-angle lens swap on a multi-camera device),
       // which is a real trust/correctness risk for an inspection product — not worth the brightness
       // gain. See this file's git history if that trade-off needs revisiting.
-      flashOverlay.classList.add('firing');
       await setTorch(true);
       const peak = await captureBrightestFrame(); // picks the brightest frame seen, see above
       await setTorch(false);
-      flashOverlay.classList.remove('firing');
       await runProcessingDelay(latencyMs);
       addShot(usedMode, peak.result, latencyMs, peak);
     } else {
