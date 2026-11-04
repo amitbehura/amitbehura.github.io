@@ -271,6 +271,17 @@
   let capturing = false, loopRunning = false;
   const shutterHint = $('shutterHint'), shotCounterDot = document.querySelector('#shotCounter .dot');
 
+  // Cached stream aspect ratio. We DON'T re-read video.videoWidth/videoHeight on every
+  // single capture — on several Android devices those values glitch transiently (e.g. during
+  // a camera pipeline reconfig right after a torch/constraint change), and a bad one-frame
+  // read produces a wildly wrong aspect ratio for that shot (very thin/stretched thumbnail).
+  // We snapshot it once the stream is stable and only refresh it on an orientation change.
+  let baseVW = 0, baseVH = 0;
+  function syncBaseDims() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw > 0 && vh > 0) { baseVW = vw; baseVH = vh; }
+  }
+
   // ---------------- camera + landscape entry ----------------
   goLandscapeBtn.addEventListener('click', async () => {
     capErr.style.display = 'none';
@@ -286,6 +297,12 @@
     }
     video.srcObject = stream;
     track = stream.getVideoTracks()[0];
+    baseVW = 0; baseVH = 0;
+    video.addEventListener('loadedmetadata', syncBaseDims, { once: true });
+    // loadedmetadata may already have fired synchronously on some browsers before the
+    // listener attached — try an immediate read too, and a short delayed re-check as backup.
+    syncBaseDims();
+    setTimeout(syncBaseDims, 400);
 
     landing.style.display = 'none';
     stage.classList.add('active');
@@ -317,6 +334,7 @@
       const caps = track.getCapabilities ? track.getCapabilities() : {};
       torchCapable = !!caps.torch;
     } catch (e) { torchCapable = false; }
+    torchUnsupported.textContent = 'no torch on this device/browser';
     torchUnsupported.style.display = torchCapable ? 'none' : 'block';
     torchToggle.disabled = !torchCapable;
   });
@@ -324,6 +342,7 @@
   function checkOrientation() {
     const landscape = window.innerWidth > window.innerHeight;
     rotatePrompt.classList.toggle('show', !landscape);
+    setTimeout(syncBaseDims, 150); // let the stream settle after a real rotation, then re-snapshot
   }
 
   exitBtn.addEventListener('click', stopSession);
@@ -356,12 +375,30 @@
   torchToggle.addEventListener('click', () => setTorch(!torchOn));
   async function setTorch(on) {
     if (!torchCapable || !track) return;
+    // Try the standard constraint shape first; some Android Chrome builds only honor the
+    // flat (non-"advanced") shape. Previously a failure here was silently swallowed, so a
+    // torch that wasn't actually engaging gave no signal at all — now we retry and, if both
+    // fail, show the real error instead of leaving the toggle looking inert.
+    let ok = false, lastErr = null;
     try {
       await track.applyConstraints({ advanced: [{ torch: on }] });
+      ok = true;
+    } catch (e) { lastErr = e; }
+    if (!ok) {
+      try {
+        await track.applyConstraints({ torch: on });
+        ok = true;
+      } catch (e) { lastErr = e; }
+    }
+    if (ok) {
       torchOn = on;
       torchToggle.textContent = on ? 'Torch On' : 'Torch Off';
       torchToggle.classList.toggle('on', on);
-    } catch (e) { /* ignore, leave state as-is */ }
+      torchUnsupported.style.display = 'none';
+    } else {
+      torchUnsupported.textContent = 'torch failed: ' + (lastErr && lastErr.message ? lastErr.message : lastErr);
+      torchUnsupported.style.display = 'block';
+    }
   }
 
   // ---------------- latency slider ----------------
@@ -384,7 +421,9 @@
   }
 
   function grabFrame() {
-    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    // Use the cached stable aspect ratio, not a fresh per-frame read (see syncBaseDims comment above).
+    if (!(baseVW > 0 && baseVH > 0)) syncBaseDims();
+    const vw = baseVW || video.videoWidth || 1280, vh = baseVH || video.videoHeight || 720;
     // downscale for fast brightness read + small thumbnail, longer side maxed at 480
     const scale = Math.min(1, 480 / Math.max(vw, vh));
     const w = Math.max(1, Math.round(vw * scale)), h = Math.max(1, Math.round(vh * scale));
