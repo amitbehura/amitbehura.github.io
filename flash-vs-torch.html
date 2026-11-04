@@ -308,7 +308,12 @@
     capErr.style.display = 'none';
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        // Pin zoom to 1 (normal/main lens) explicitly. Without this, the live preview and
+        // ImageCapture.takePhoto() can each silently default to a DIFFERENT physical lens on
+        // multi-camera phones (confirmed: prod itself sets zoom:{ideal:.5} deliberately to get
+        // the wide lens for framing — so this constraint genuinely does steer lens selection on
+        // these devices, it's not a no-op).
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: { ideal: 1 } },
         audio: false
       });
     } catch (e) {
@@ -349,6 +354,14 @@
       window.addEventListener('resize', checkOrientation);
       window.addEventListener('orientationchange', checkOrientation);
     }
+
+    // Explicit zoom pin as a backup — getUserMedia's zoom constraint isn't always strictly
+    // honored (same reason torch needs its own applyConstraints retry below). Only attempted
+    // if the device actually reports a zoom capability; harmless no-op otherwise.
+    try {
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.zoom) await track.applyConstraints({ advanced: [{ zoom: 1 }] });
+    } catch (e) { /* zoom pin best-effort only */ }
 
     // torch capability
     try {
