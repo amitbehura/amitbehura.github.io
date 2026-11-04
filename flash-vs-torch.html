@@ -477,16 +477,20 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // ---------------- adaptive exposure-convergence wait (replaces fixed settle time) ----------------
-  // A fixed settle delay (e.g. 120ms) is a guess tuned to no particular device — auto-exposure
-  // convergence speed varies a lot between low-end and high-end phones. Instead we poll live
-  // brightness on a tiny, cheap crop right after the torch fires, and capture as soon as
-  // consecutive readings stop changing (exposure has settled), with a hard cap so a device that
-  // never fully stabilizes doesn't stall the shot indefinitely.
-  const CONVERGE_POLL_MS = 45;
-  const CONVERGE_STABLE_HITS = 2;
-  const CONVERGE_DELTA_THRESHOLD = 2.5; // luma units; two consecutive reads within this count as "settled"
-  const CONVERGE_MAX_WAIT_MS = 700;
+  // ---------------- capture the brightest frame during the flash pulse ----------------
+  // Earlier version waited for auto-exposure to SETTLE (stop changing) before capturing — that
+  // deliberately favors a correctly-exposed frame over peak brightness, since AE's job is to pull
+  // the sudden post-flash brightness spike back down. Per explicit preference, we now do the
+  // opposite: keep sampling brightness on a tiny, cheap crop while the flash is active, and
+  // whenever a new running-max brightness is seen, grab a real full-quality frame at that instant
+  // (can't retroactively recover a past video frame, so the real grab has to happen live, right
+  // when each new peak is detected). Stop early once brightness has clearly started declining for
+  // a few samples in a row (we're past the peak), or at a hard cap so a device that never peaks
+  // cleanly doesn't stall the shot.
+  const PEAK_POLL_MS = 45;
+  const PEAK_MAX_WAIT_MS = 700;
+  const PEAK_DECLINE_STREAK_TO_STOP = 3;
+  const PEAK_DECLINE_NOISE_TOLERANCE = 1; // luma units; smaller dips than this don't count as "declining"
 
   function sampleBrightnessFast() {
     const vw = baseVW || video.videoWidth || 1280, vh = baseVH || video.videoHeight || 720;
@@ -498,25 +502,30 @@
     return measureBrightness(ctx, w, h);
   }
 
-  async function waitForExposureConvergence() {
+  async function captureBrightestFrame() {
     const start = performance.now();
-    let prev = null, stableHits = 0;
-    while (performance.now() - start < CONVERGE_MAX_WAIT_MS) {
+    let bestBrightness = -Infinity, bestResult = null;
+    let lastBrightness = null, decliningStreak = 0;
+    let exitReason = 'capped';
+    while (performance.now() - start < PEAK_MAX_WAIT_MS) {
       const b = sampleBrightnessFast();
-      if (prev !== null) {
-        if (Math.abs(b - prev) < CONVERGE_DELTA_THRESHOLD) {
-          stableHits++;
-          if (stableHits >= CONVERGE_STABLE_HITS) {
-            return { converged: true, waitedMs: Math.round(performance.now() - start) };
-          }
+      if (b > bestBrightness) {
+        bestBrightness = b;
+        bestResult = grabFrame(); // real capture, taken live at the moment of each new peak
+      }
+      if (lastBrightness !== null) {
+        if (b < lastBrightness - PEAK_DECLINE_NOISE_TOLERANCE) {
+          decliningStreak++;
+          if (decliningStreak >= PEAK_DECLINE_STREAK_TO_STOP) { exitReason = 'declined'; break; }
         } else {
-          stableHits = 0;
+          decliningStreak = 0;
         }
       }
-      prev = b;
-      await sleep(CONVERGE_POLL_MS);
+      lastBrightness = b;
+      await sleep(PEAK_POLL_MS);
     }
-    return { converged: false, waitedMs: Math.round(performance.now() - start) };
+    if (!bestResult) bestResult = grabFrame(); // safety fallback, shouldn't normally happen
+    return { result: bestResult, peakBrightness: bestBrightness, waitedMs: Math.round(performance.now() - start), exitReason };
   }
 
   // ---------------- shutter: continuous capture, like a camera app ----------------
@@ -586,12 +595,11 @@
       // pulse: on immediately before capture, off immediately after — independent of processing delay
       await setTorch(true);
       flashOverlay.classList.add('firing');
-      const conv = await waitForExposureConvergence(); // adaptive settle, see above
-      const result = grabFrame();
+      const peak = await captureBrightestFrame(); // picks the brightest frame seen, see above
       await setTorch(false);
       flashOverlay.classList.remove('firing');
       await runProcessingDelay(latencyMs);
-      addShot(usedMode, result, latencyMs, conv);
+      addShot(usedMode, peak.result, latencyMs, peak);
     } else {
       // torch mode: whatever persistent torch state is already set, just capture
       const result = grabFrame();
@@ -607,14 +615,14 @@
     processingToast.classList.remove('show');
   }
 
-  function addShot(usedMode, result, latencyMs, conv) {
+  function addShot(usedMode, result, latencyMs, peak) {
     const shot = {
       mode: usedMode,
       brightness: result.brightness,
       dataUrl: result.dataUrl,
       latencyMs,
-      settleMs: conv ? conv.waitedMs : null,
-      settleConverged: conv ? conv.converged : null,
+      peakWaitMs: peak ? peak.waitedMs : null,
+      peakExitReason: peak ? peak.exitReason : null,
       ts: new Date().toLocaleTimeString()
     };
     shots.unshift(shot);
@@ -636,7 +644,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
-          ${s.settleMs !== null ? `<div>Settle: ${s.settleMs} ms${s.settleConverged ? '' : ' (capped)'}</div>` : ''}
+          ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -660,7 +668,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()} #${shots.length - i}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
-          ${s.settleMs !== null ? `<div>Settle: ${s.settleMs} ms${s.settleConverged ? '' : ' (capped)'}</div>` : ''}
+          ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -673,12 +681,12 @@
     downloadZipBtn.textContent = 'Zipping…';
     try {
       const zip = new JSZip();
-      const manifestLines = ['index,mode,brightness,delay_ms,settle_ms,settle_converged,time'];
+      const manifestLines = ['index,mode,brightness,delay_ms,peak_wait_ms,peak_exit_reason,time'];
       shots.slice().reverse().forEach((s, idx) => {
         const n = idx + 1;
         const base64 = s.dataUrl.split(',')[1];
         zip.file(`shot_${String(n).padStart(3,'0')}_${s.mode}.jpg`, base64, { base64: true });
-        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.settleMs !== null ? s.settleMs : ''},${s.settleConverged !== null ? s.settleConverged : ''},${s.ts}`);
+        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.peakWaitMs !== null ? s.peakWaitMs : ''},${s.peakExitReason || ''},${s.ts}`);
       });
       zip.file('manifest.csv', manifestLines.join('\n'));
       const blob = await zip.generateAsync({ type: 'blob' });
