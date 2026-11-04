@@ -120,11 +120,15 @@
   .shot .meta .b { color:#fff; font-weight:700; }
   #galleryEmpty { color:#777; font-size:12px; text-align:center; margin-top:30px; }
 
-  /* live shot counter, always visible while shooting */
+  /* live shot counter, always visible while shooting.
+     Positioned BELOW #topbar (not overlapping it) — it used to sit at the same top offset,
+     centered, right on top of #torchToggleWrap (also roughly centered via space-between),
+     and being higher z-index it silently absorbed every tap meant for the torch button. */
   #shotCounter {
-    position:absolute; left:50%; top:max(10px, env(safe-area-inset-top)); transform:translateX(-50%); z-index:21;
+    position:absolute; left:50%; top:calc(max(10px, env(safe-area-inset-top)) + 44px); transform:translateX(-50%); z-index:21;
     background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.18); border-radius:999px;
     padding:5px 12px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px;
+    pointer-events:none; /* informational only — must never be able to absorb a tap meant for a control beneath it */
   }
   #shotCounter .dot { width:7px; height:7px; border-radius:50%; background:#555; }
   #shotCounter .dot.live { background:#ff4d4d; animation:dotPulse 1s ease-in-out infinite; }
