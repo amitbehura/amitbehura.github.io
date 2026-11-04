@@ -71,10 +71,15 @@
   #latencyBox input[type=range] { width:100%; accent-color:#3b82f6; }
   #shutter {
     width:68px; height:68px; border-radius:50%; border:4px solid #fff; background:rgba(255,255,255,.15);
-    flex:0 0 auto; cursor:pointer; position:relative;
+    flex:0 0 auto; cursor:pointer; position:relative; transition:border-color .15s ease;
   }
-  #shutter:active { background:rgba(255,255,255,.4); }
-  #shutter.busy { opacity:.5; pointer-events:none; }
+  #shutter::after {
+    content:''; position:absolute; inset:14px; border-radius:50%; background:#fff;
+    transition:inset .15s ease, border-radius .15s ease, background .15s ease;
+  }
+  #shutter.capturing { border-color:#ef4444; }
+  #shutter.capturing::after { inset:23px; border-radius:6px; background:#ef4444; }
+  #shutterHint { position:absolute; left:50%; bottom:-20px; transform:translateX(-50%); font-size:10px; color:#9aa0a6; white-space:nowrap; }
 
   /* flash pulse overlay */
   #flashOverlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:40; transition:opacity .08s linear; }
@@ -121,8 +126,10 @@
     background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.18); border-radius:999px;
     padding:5px 12px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px;
   }
-  #shotCounter .dot { width:7px; height:7px; border-radius:50%; background:#ff4d4d; }
+  #shotCounter .dot { width:7px; height:7px; border-radius:50%; background:#555; }
+  #shotCounter .dot.live { background:#ff4d4d; animation:dotPulse 1s ease-in-out infinite; }
   #shotCounter b { font-variant-numeric: tabular-nums; }
+  @keyframes dotPulse { 0%,100% { opacity:1; } 50% { opacity:.25; } }
 
   /* ---------- Review screen ---------- */
   #review { position:fixed; inset:0; display:none; background:#0b0b0e; z-index:70; flex-direction:column; }
@@ -162,7 +169,7 @@
 <!-- Portrait landing -->
 <div id="landing">
   <h1>Flash vs Torch Test</h1>
-  <p>Compares a persistent-torch capture against a flash-pulse capture (torch fired on right before the shot, off right after), with a manual processing-latency slider and measured brightness per shot.</p>
+  <p>Compares a persistent-torch capture against a flash-pulse capture (torch fired on right before the shot, off right after), with a manual processing-latency slider and measured brightness per shot. Tap the shutter to start continuous capture, like a camera &mdash; tap again to pause, or Stop to finish.</p>
   <button class="big-btn" id="goLandscapeBtn">Go Landscape &amp; Open Camera</button>
   <p id="capErr"></p>
 </div>
@@ -192,7 +199,9 @@
       <label>Processing delay <b id="latencyVal">300 ms</b></label>
       <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
     </div>
-    <button id="shutter" aria-label="Capture"></button>
+    <button id="shutter" aria-label="Start capturing">
+      <span id="shutterHint">Tap to start</span>
+    </button>
   </div>
 
   <div id="rotatePrompt">
@@ -259,6 +268,8 @@
   let stream = null, track = null, torchCapable = false, torchOn = false;
   let mode = 'torch'; // 'torch' | 'flash'
   let shots = [];
+  let capturing = false, loopRunning = false;
+  const shutterHint = $('shutterHint'), shotCounterDot = document.querySelector('#shotCounter .dot');
 
   // ---------------- camera + landscape entry ----------------
   goLandscapeBtn.addEventListener('click', async () => {
@@ -317,6 +328,8 @@
 
   exitBtn.addEventListener('click', stopSession);
   function stopSession() {
+    capturing = false;
+    setShutterUI();
     if (stream) stream.getTracks().forEach(t => t.stop());
     try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
@@ -385,33 +398,53 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // ---------------- shutter ----------------
-  shutter.addEventListener('click', onShutter);
-  async function onShutter() {
-    if (shutter.classList.contains('busy')) return;
-    shutter.classList.add('busy');
+  // ---------------- shutter: continuous capture, like a camera app ----------------
+  // Tap to start a capture loop that keeps shooting (respecting the processing-delay
+  // gap between frames) until tapped again (pause) or Stop is pressed.
+  shutter.addEventListener('click', () => {
+    capturing = !capturing;
+    setShutterUI();
+    if (capturing) runCaptureLoop();
+  });
+
+  function setShutterUI() {
+    shutter.classList.toggle('capturing', capturing);
+    shutter.setAttribute('aria-label', capturing ? 'Pause capturing' : 'Start capturing');
+    shutterHint.textContent = capturing ? 'Capturing… tap to pause' : 'Tap to start';
+    shotCounterDot.classList.toggle('live', capturing);
+  }
+
+  async function runCaptureLoop() {
+    if (loopRunning) return; // already looping, this tap only flips `capturing`
+    loopRunning = true;
+    try {
+      while (capturing) {
+        await captureOnce();
+      }
+    } finally {
+      loopRunning = false;
+    }
+  }
+
+  async function captureOnce() {
     const latencyMs = parseInt(latencySlider.value, 10) || 0;
     const usedMode = mode;
 
-    try {
-      if (usedMode === 'flash') {
-        // pulse: on immediately before capture, off immediately after — independent of processing delay
-        await setTorch(true);
-        flashOverlay.classList.add('firing');
-        await sleep(120); // brief settle so exposure/metering can react before the frame grab
-        const result = grabFrame();
-        await setTorch(false);
-        flashOverlay.classList.remove('firing');
-        await runProcessingDelay(latencyMs);
-        addShot(usedMode, result, latencyMs);
-      } else {
-        // torch mode: whatever persistent torch state is already set, just capture
-        const result = grabFrame();
-        await runProcessingDelay(latencyMs);
-        addShot(usedMode, result, latencyMs);
-      }
-    } finally {
-      shutter.classList.remove('busy');
+    if (usedMode === 'flash') {
+      // pulse: on immediately before capture, off immediately after — independent of processing delay
+      await setTorch(true);
+      flashOverlay.classList.add('firing');
+      await sleep(120); // brief settle so exposure/metering can react before the frame grab
+      const result = grabFrame();
+      await setTorch(false);
+      flashOverlay.classList.remove('firing');
+      await runProcessingDelay(latencyMs);
+      addShot(usedMode, result, latencyMs);
+    } else {
+      // torch mode: whatever persistent torch state is already set, just capture
+      const result = grabFrame();
+      await runProcessingDelay(latencyMs);
+      addShot(usedMode, result, latencyMs);
     }
   }
 
@@ -509,8 +542,10 @@
 
   restartBtn.addEventListener('click', () => {
     shots = [];
+    capturing = false;
     galleryCount.textContent = '0';
     shotCounterVal.textContent = '0';
+    setShutterUI();
     renderGallery();
     review.classList.remove('active');
     landing.style.display = 'flex';
