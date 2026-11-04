@@ -214,7 +214,7 @@
         <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
       </div>
       <div id="pulseBox">
-        <label>Flash pulse delay <b id="pulseVal">50 ms</b></label>
+        <label>Pulse delay (pre + main) <b id="pulseVal">50 ms</b></label>
         <input type="range" id="pulseSlider" min="0" max="300" step="10" value="50">
       </div>
     </div>
@@ -497,6 +497,11 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+  // Gap between the pre-flash and the main flash in Flash mode's two-pulse sequence (see
+  // captureOnce) — long enough for auto-exposure to start reacting to the pre-flash, short
+  // enough to not meaningfully add to per-shot latency.
+  const PRE_FLASH_GAP_MS = 60;
+
   // ---------------- shutter: continuous capture, like a camera app ----------------
   // Tap to start a capture loop that keeps shooting (respecting the processing-delay
   // gap between frames) until tapped again (pause) or Stop is pressed.
@@ -568,11 +573,21 @@
       // which is a real trust/correctness risk for an inspection product — not worth the brightness
       // gain. See this file's git history if that trade-off needs revisiting.
       //
-      // Capture timing: a fixed, user-controlled pulse delay (default 50ms), NOT an adaptive scan.
+      // Capture timing: fixed, user-controlled pulse delay (default 50ms), NOT an adaptive scan.
       // An earlier version polled for the brightest frame, which could take up to 700ms worst case —
       // that blew past the real per-frame budget (3 frames/sec in production ≈ 333ms total,
       // including everything). Speed matters more than hunting for the exact peak moment here.
+      //
+      // Pre-flash + main flash: a short, uncaptured pulse fires first to give auto-exposure
+      // something bright to react to, then a brief gap, then the real flash+capture. This is the
+      // same technique real cameras use for flash metering — it doesn't require measuring where
+      // the brightness peak is (which we removed for speed), it just gives AE a head start before
+      // the pulse that actually gets captured, instead of hitting it cold.
       const pulseMs = parseInt(pulseSlider.value, 10) || 0;
+      await setTorch(true);
+      await sleep(pulseMs);
+      await setTorch(false);
+      await sleep(PRE_FLASH_GAP_MS);
       await setTorch(true);
       await sleep(pulseMs);
       const result = grabFrame();
