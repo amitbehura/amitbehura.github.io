@@ -65,10 +65,12 @@
     padding: 14px max(18px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
     background:linear-gradient(to top, rgba(0,0,0,.6), transparent);
   }
-  #latencyBox { flex:1; min-width:0; }
-  #latencyBox label { font-size:10px; color:#9aa0a6; display:flex; justify-content:space-between; margin-bottom:4px; }
-  #latencyBox label b { color:#fff; }
-  #latencyBox input[type=range] { width:100%; accent-color:#3b82f6; }
+  #slidersBox { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+  #latencyBox, #pulseBox { min-width:0; }
+  #latencyBox label, #pulseBox label { font-size:10px; color:#9aa0a6; display:flex; justify-content:space-between; margin-bottom:4px; }
+  #latencyBox label b, #pulseBox label b { color:#fff; }
+  #latencyBox input[type=range], #pulseBox input[type=range] { width:100%; accent-color:#3b82f6; }
+  #pulseBox.hidden { display:none; }
   #shutter {
     width:68px; height:68px; border-radius:50%; border:4px solid #fff; background:rgba(255,255,255,.15);
     flex:0 0 auto; cursor:pointer; position:relative; transition:border-color .15s ease;
@@ -206,9 +208,15 @@
   <button id="galleryHandle"><b id="galleryCount">0</b>shots</button>
 
   <div id="bottombar">
-    <div id="latencyBox">
-      <label>Processing delay <b id="latencyVal">300 ms</b></label>
-      <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
+    <div id="slidersBox">
+      <div id="latencyBox">
+        <label>Processing delay <b id="latencyVal">300 ms</b></label>
+        <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
+      </div>
+      <div id="pulseBox">
+        <label>Flash pulse delay <b id="pulseVal">50 ms</b></label>
+        <input type="range" id="pulseSlider" min="0" max="300" step="10" value="50">
+      </div>
     </div>
     <button id="shutter" aria-label="Start capturing">
       <span id="shutterHint">Tap to start</span>
@@ -269,6 +277,7 @@
   const torchToggle = $('torchToggle'), torchUnsupported = $('torchUnsupported');
   const exitBtn = $('exitBtn');
   const latencySlider = $('latencySlider'), latencyVal = $('latencyVal');
+  const pulseSlider = $('pulseSlider'), pulseVal = $('pulseVal'), pulseBox = $('pulseBox');
   const shutter = $('shutter');
   const countdownOverlay = $('countdownOverlay'), countdownNum = $('countdownNum');
   const processingToast = $('processingToast'), processingLabel = $('processingLabel');
@@ -400,6 +409,7 @@
     // flash mode manages its own pulse per shot — force any persistent torch off when switching to it
     if (m === 'flash' && torchOn) setTorch(false);
     torchToggle.style.display = (m === 'torch') ? 'inline-block' : 'none';
+    pulseBox.classList.toggle('hidden', m !== 'flash'); // only meaningful in flash mode
   }
 
   // ---------------- persistent torch toggle (Torch mode only) ----------------
@@ -452,6 +462,9 @@
   latencySlider.addEventListener('input', () => {
     latencyVal.textContent = latencySlider.value + ' ms';
   });
+  pulseSlider.addEventListener('input', () => {
+    pulseVal.textContent = pulseSlider.value + ' ms';
+  });
 
   // ---------------- gallery drawer ----------------
   galleryHandle.addEventListener('click', () => gallery.classList.add('open'));
@@ -483,57 +496,6 @@
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  // ---------------- capture the brightest frame during the flash pulse ----------------
-  // Earlier version waited for auto-exposure to SETTLE (stop changing) before capturing — that
-  // deliberately favors a correctly-exposed frame over peak brightness, since AE's job is to pull
-  // the sudden post-flash brightness spike back down. Per explicit preference, we now do the
-  // opposite: keep sampling brightness on a tiny, cheap crop while the flash is active, and
-  // whenever a new running-max brightness is seen, grab a real full-quality frame at that instant
-  // (can't retroactively recover a past video frame, so the real grab has to happen live, right
-  // when each new peak is detected). Stop early once brightness has clearly started declining for
-  // a few samples in a row (we're past the peak), or at a hard cap so a device that never peaks
-  // cleanly doesn't stall the shot.
-  const PEAK_POLL_MS = 45;
-  const PEAK_MAX_WAIT_MS = 700;
-  const PEAK_DECLINE_STREAK_TO_STOP = 3;
-  const PEAK_DECLINE_NOISE_TOLERANCE = 1; // luma units; smaller dips than this don't count as "declining"
-
-  function sampleBrightnessFast() {
-    const vw = baseVW || video.videoWidth || 1280, vh = baseVH || video.videoHeight || 720;
-    const scale = Math.min(1, 64 / Math.max(vw, vh)); // tiny crop — just enough to poll cheaply
-    const w = Math.max(1, Math.round(vw * scale)), h = Math.max(1, Math.round(vh * scale));
-    workCanvas.width = w; workCanvas.height = h;
-    const ctx = workCanvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(video, 0, 0, w, h);
-    return measureBrightness(ctx, w, h);
-  }
-
-  async function captureBrightestFrame() {
-    const start = performance.now();
-    let bestBrightness = -Infinity, bestResult = null;
-    let lastBrightness = null, decliningStreak = 0;
-    let exitReason = 'capped';
-    while (performance.now() - start < PEAK_MAX_WAIT_MS) {
-      const b = sampleBrightnessFast();
-      if (b > bestBrightness) {
-        bestBrightness = b;
-        bestResult = grabFrame(); // real capture, taken live at the moment of each new peak
-      }
-      if (lastBrightness !== null) {
-        if (b < lastBrightness - PEAK_DECLINE_NOISE_TOLERANCE) {
-          decliningStreak++;
-          if (decliningStreak >= PEAK_DECLINE_STREAK_TO_STOP) { exitReason = 'declined'; break; }
-        } else {
-          decliningStreak = 0;
-        }
-      }
-      lastBrightness = b;
-      await sleep(PEAK_POLL_MS);
-    }
-    if (!bestResult) bestResult = grabFrame(); // safety fallback, shouldn't normally happen
-    return { result: bestResult, peakBrightness: bestBrightness, waitedMs: Math.round(performance.now() - start), exitReason };
-  }
 
   // ---------------- shutter: continuous capture, like a camera app ----------------
   // Tap to start a capture loop that keeps shooting (respecting the processing-delay
@@ -605,11 +567,18 @@
       // framing from the live preview (confirmed: wide-angle lens swap on a multi-camera device),
       // which is a real trust/correctness risk for an inspection product — not worth the brightness
       // gain. See this file's git history if that trade-off needs revisiting.
+      //
+      // Capture timing: a fixed, user-controlled pulse delay (default 50ms), NOT an adaptive scan.
+      // An earlier version polled for the brightest frame, which could take up to 700ms worst case —
+      // that blew past the real per-frame budget (3 frames/sec in production ≈ 333ms total,
+      // including everything). Speed matters more than hunting for the exact peak moment here.
+      const pulseMs = parseInt(pulseSlider.value, 10) || 0;
       await setTorch(true);
-      const peak = await captureBrightestFrame(); // picks the brightest frame seen, see above
+      await sleep(pulseMs);
+      const result = grabFrame();
       await setTorch(false);
       await runProcessingDelay(latencyMs);
-      addShot(usedMode, peak.result, latencyMs, peak);
+      addShot(usedMode, result, latencyMs, pulseMs);
     } else {
       // torch mode: whatever persistent torch state is already set, just capture
       const result = grabFrame();
@@ -625,14 +594,13 @@
     processingToast.classList.remove('show');
   }
 
-  function addShot(usedMode, result, latencyMs, peak) {
+  function addShot(usedMode, result, latencyMs, pulseMs) {
     const shot = {
       mode: usedMode,
       brightness: result.brightness,
       dataUrl: result.dataUrl,
       latencyMs,
-      peakWaitMs: peak ? peak.waitedMs : null,
-      peakExitReason: peak ? peak.exitReason : null,
+      pulseMs: pulseMs !== undefined && pulseMs !== null ? pulseMs : null,
       ts: new Date().toLocaleTimeString()
     };
     shots.unshift(shot);
@@ -654,7 +622,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
-          ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
+          ${s.pulseMs !== null ? `<div>Pulse: ${s.pulseMs} ms</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -678,7 +646,7 @@
           <div class="mode ${s.mode}">${s.mode.toUpperCase()} #${shots.length - i}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
           <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
-          ${s.peakWaitMs !== null ? `<div>Peak scan: ${s.peakWaitMs} ms (${s.peakExitReason})</div>` : ''}
+          ${s.pulseMs !== null ? `<div>Pulse: ${s.pulseMs} ms</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -691,12 +659,12 @@
     downloadZipBtn.textContent = 'Zipping…';
     try {
       const zip = new JSZip();
-      const manifestLines = ['index,mode,brightness,delay_ms,peak_wait_ms,peak_exit_reason,time'];
+      const manifestLines = ['index,mode,brightness,delay_ms,pulse_ms,time'];
       shots.slice().reverse().forEach((s, idx) => {
         const n = idx + 1;
         const base64 = s.dataUrl.split(',')[1];
         zip.file(`shot_${String(n).padStart(3,'0')}_${s.mode}.jpg`, base64, { base64: true });
-        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.peakWaitMs !== null ? s.peakWaitMs : ''},${s.peakExitReason || ''},${s.ts}`);
+        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.pulseMs !== null ? s.pulseMs : ''},${s.ts}`);
       });
       zip.file('manifest.csv', manifestLines.join('\n'));
       const blob = await zip.generateAsync({ type: 'blob' });
