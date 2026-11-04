@@ -209,10 +209,6 @@
 
   <div id="bottombar">
     <div id="slidersBox">
-      <div id="latencyBox">
-        <label>Processing delay <b id="latencyVal">300 ms</b></label>
-        <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
-      </div>
       <div id="pulseBox">
         <label>Pulse delay (pre + main) <b id="pulseVal">50 ms</b></label>
         <input type="range" id="pulseSlider" min="0" max="300" step="10" value="50">
@@ -246,6 +242,7 @@
 </div>
 
 <canvas id="workCanvas" style="display:none"></canvas>
+<canvas id="procCanvas" style="display:none"></canvas>
 
 <!-- Review screen: shown after Stop -->
 <div id="review">
@@ -276,7 +273,6 @@
   const modeTorchBtn = $('modeTorchBtn'), modeFlashBtn = $('modeFlashBtn');
   const torchToggle = $('torchToggle'), torchUnsupported = $('torchUnsupported');
   const exitBtn = $('exitBtn');
-  const latencySlider = $('latencySlider'), latencyVal = $('latencyVal');
   const pulseSlider = $('pulseSlider'), pulseVal = $('pulseVal'), pulseBox = $('pulseBox');
   const shutter = $('shutter');
   const countdownOverlay = $('countdownOverlay'), countdownNum = $('countdownNum');
@@ -284,6 +280,7 @@
   const galleryHandle = $('galleryHandle'), galleryCount = $('galleryCount');
   const gallery = $('gallery'), galleryClose = $('galleryClose'), galleryList = $('galleryList'), galleryEmpty = $('galleryEmpty');
   const workCanvas = $('workCanvas');
+  const procCanvas = $('procCanvas');
   const shotCounterVal = $('shotCounterVal');
   const review = $('review'), reviewGrid = $('reviewGrid'), reviewEmpty = $('reviewEmpty'), reviewCount = $('reviewCount');
   const downloadZipBtn = $('downloadZipBtn'), restartBtn = $('restartBtn');
@@ -458,10 +455,7 @@
     }
   }
 
-  // ---------------- latency slider ----------------
-  latencySlider.addEventListener('input', () => {
-    latencyVal.textContent = latencySlider.value + ' ms';
-  });
+  // ---------------- pulse slider ----------------
   pulseSlider.addEventListener('input', () => {
     pulseVal.textContent = pulseSlider.value + ' ms';
   });
@@ -496,6 +490,94 @@
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ---------------- real frame processing (measured, not simulated) ----------------
+  // Structure borrowed from the production blur-detection pipeline: grayscale -> Laplacian
+  // convolution -> whole-frame variance, plus a 4x4 grid of per-cell variance (blurry-cell
+  // count) and a glare check. Not the ML model, not calibrated to prod's thresholds — just
+  // real, measurable work on the actual pixels so processing time is an output, not a slider.
+  function processFrame() {
+    const t0 = performance.now();
+    const w = workCanvas.width, h = workCanvas.height;
+    procCanvas.width = w; procCanvas.height = h;
+    const srcCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+    const { data } = srcCtx.getImageData(0, 0, w, h);
+
+    // grayscale
+    const gray = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      gray[p] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+    }
+
+    // 3x3 Laplacian convolution (edge kernel: 0,1,0 / 1,-4,1 / 0,1,0), skip 1px border
+    const lap = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        const v = -4 * gray[idx] + gray[idx - 1] + gray[idx + 1] + gray[idx - w] + gray[idx + w];
+        lap[idx] = v;
+      }
+    }
+
+    // whole-frame Laplacian variance
+    let sum = 0;
+    for (let i = 0; i < lap.length; i++) sum += lap[i];
+    const mean = sum / lap.length;
+    let varSum = 0;
+    for (let i = 0; i < lap.length; i++) { const d = lap[i] - mean; varSum += d * d; }
+    const rawVariance = varSum / lap.length;
+
+    // brightness-capped normalized score (same idea as prod: don't let a bright frame fake sharpness)
+    const brightness = measureBrightness(srcCtx, w, h);
+    const brightnessCap = Math.min(brightness, 100);
+    const normalizedScore = rawVariance * (brightnessCap / 100);
+
+    // 4x4 grid: per-cell variance, count cells below a blur threshold
+    const GRID = 4, BLUR_CELL_THRESHOLD = 50;
+    const cellW = Math.floor(w / GRID), cellH = Math.floor(h / GRID);
+    let blurryCells = 0, totalCells = 0;
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const x0 = gx * cellW, y0 = gy * cellH;
+        const x1 = (gx === GRID - 1) ? w : x0 + cellW;
+        const y1 = (gy === GRID - 1) ? h : y0 + cellH;
+        if (x1 - x0 < 3 || y1 - y0 < 3) continue;
+        let cSum = 0, cN = 0;
+        for (let y = Math.max(1, y0); y < Math.min(h - 1, y1); y++) {
+          for (let x = Math.max(1, x0); x < Math.min(w - 1, x1); x++) {
+            cSum += lap[y * w + x]; cN++;
+          }
+        }
+        if (cN === 0) continue;
+        const cMean = cSum / cN;
+        let cVar = 0;
+        for (let y = Math.max(1, y0); y < Math.min(h - 1, y1); y++) {
+          for (let x = Math.max(1, x0); x < Math.min(w - 1, x1); x++) {
+            const d = lap[y * w + x] - cMean; cVar += d * d;
+          }
+        }
+        cVar /= cN;
+        totalCells++;
+        if (cVar < BLUR_CELL_THRESHOLD) blurryCells++;
+      }
+    }
+
+    // glare: bv(b,v) = p*(1-p)*255^2 where p = fraction of near-white pixels
+    const BRIGHT_PIXEL_THRESHOLD = 235, GLARE_THRESHOLD = 2000;
+    let brightPixels = 0;
+    for (let p = 0; p < gray.length; p++) if (gray[p] >= BRIGHT_PIXEL_THRESHOLD) brightPixels++;
+    const p = brightPixels / gray.length;
+    const glareScore = p * (1 - p) * 255 * 255;
+    const hasGlare = glareScore > GLARE_THRESHOLD;
+
+    const elapsedMs = performance.now() - t0;
+    return {
+      elapsedMs,
+      rawVariance, normalizedScore,
+      blurryCells, totalCells,
+      glareScore, hasGlare
+    };
+  }
 
   // Gap between the pre-flash and the main flash in Flash mode's two-pulse sequence (see
   // captureOnce) — long enough for auto-exposure to start reacting to the pre-flash, short
@@ -562,7 +644,6 @@
   }
 
   async function captureOnce() {
-    const latencyMs = parseInt(latencySlider.value, 10) || 0;
     const usedMode = mode;
 
     if (usedMode === 'flash') {
@@ -592,29 +673,39 @@
       await sleep(pulseMs);
       const result = grabFrame();
       await setTorch(false);
-      await runProcessingDelay(latencyMs);
-      addShot(usedMode, result, latencyMs, pulseMs);
+      const proc = await runRealProcessing();
+      addShot(usedMode, result, proc, pulseMs);
     } else {
       // torch mode: whatever persistent torch state is already set, just capture
       const result = grabFrame();
-      await runProcessingDelay(latencyMs);
-      addShot(usedMode, result, latencyMs, null);
+      const proc = await runRealProcessing();
+      addShot(usedMode, result, proc, null);
     }
   }
 
-  async function runProcessingDelay(ms) {
-    processingLabel.textContent = 'Processing… ' + ms + ' ms';
+  async function runRealProcessing() {
+    processingLabel.textContent = 'Processing…';
     processingToast.classList.add('show');
-    await sleep(ms);
+    // yield a frame so the toast actually paints before the (synchronous) work below
+    await new Promise(r => requestAnimationFrame(r));
+    const proc = processFrame();
+    processingLabel.textContent = 'Processed: ' + proc.elapsedMs.toFixed(1) + ' ms';
+    await sleep(150);
     processingToast.classList.remove('show');
+    return proc;
   }
 
-  function addShot(usedMode, result, latencyMs, pulseMs) {
+  function addShot(usedMode, result, proc, pulseMs) {
     const shot = {
       mode: usedMode,
       brightness: result.brightness,
       dataUrl: result.dataUrl,
-      latencyMs,
+      processMs: proc.elapsedMs,
+      rawVariance: proc.rawVariance,
+      normalizedScore: proc.normalizedScore,
+      blurryCells: proc.blurryCells,
+      totalCells: proc.totalCells,
+      hasGlare: proc.hasGlare,
       pulseMs: pulseMs !== undefined && pulseMs !== null ? pulseMs : null,
       ts: new Date().toLocaleTimeString()
     };
@@ -636,7 +727,7 @@
         <div class="meta">
           <div class="mode ${s.mode}">${s.mode.toUpperCase()}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
-          <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+          <div>Process: ${s.processMs.toFixed(1)} ms &middot; ${s.ts}</div>
           ${s.pulseMs !== null ? `<div>Pulse: ${s.pulseMs} ms</div>` : ''}
         </div>
       </div>
@@ -660,7 +751,8 @@
         <div class="rmeta">
           <div class="mode ${s.mode}">${s.mode.toUpperCase()} #${shots.length - i}</div>
           <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
-          <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+          <div>Process: ${s.processMs.toFixed(1)} ms &middot; ${s.ts}</div>
+          <div>Blur cells: ${s.blurryCells}/${s.totalCells}${s.hasGlare ? ' &middot; GLARE' : ''}</div>
           ${s.pulseMs !== null ? `<div>Pulse: ${s.pulseMs} ms</div>` : ''}
         </div>
       </div>
@@ -674,12 +766,12 @@
     downloadZipBtn.textContent = 'Zipping…';
     try {
       const zip = new JSZip();
-      const manifestLines = ['index,mode,brightness,delay_ms,pulse_ms,time'];
+      const manifestLines = ['index,mode,brightness,process_ms,raw_variance,normalized_score,blurry_cells,total_cells,has_glare,pulse_ms,time'];
       shots.slice().reverse().forEach((s, idx) => {
         const n = idx + 1;
         const base64 = s.dataUrl.split(',')[1];
         zip.file(`shot_${String(n).padStart(3,'0')}_${s.mode}.jpg`, base64, { base64: true });
-        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.pulseMs !== null ? s.pulseMs : ''},${s.ts}`);
+        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.processMs.toFixed(2)},${s.rawVariance.toFixed(2)},${s.normalizedScore.toFixed(2)},${s.blurryCells},${s.totalCells},${s.hasGlare},${s.pulseMs !== null ? s.pulseMs : ''},${s.ts}`);
       });
       zip.file('manifest.csv', manifestLines.join('\n'));
       const blob = await zip.generateAsync({ type: 'blob' });
