@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Flash vs Torch Test</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; height:100%; background:#0b0b0e; color:#eee; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; overflow:hidden; }
+
+  /* ---------- Portrait / landing screen ---------- */
+  #landing {
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:20px; padding:24px; text-align:center;
+  }
+  #landing h1 { font-size:20px; margin:0 0 4px; font-weight:700; }
+  #landing p { font-size:13px; color:#9aa0a6; margin:0; max-width:320px; line-height:1.5; }
+  .big-btn {
+    padding:16px 32px; font-size:16px; font-weight:700; border:none; border-radius:14px;
+    background:#3b82f6; color:#fff; cursor:pointer; min-width:220px;
+  }
+  .big-btn:active { background:#2563eb; }
+  #capErr { color:#ff6b6b; font-size:13px; max-width:320px; display:none; }
+
+  /* ---------- Landscape camera screen ---------- */
+  #stage { position:fixed; inset:0; display:none; background:#000; }
+  #stage.active { display:block; }
+  #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
+  #rotatePrompt {
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    background:rgba(0,0,0,.92); z-index:50; padding:24px; text-align:center;
+  }
+  #rotatePrompt.show { display:flex; }
+  #rotatePrompt .icon { font-size:40px; }
+  #rotatePrompt p { color:#ccc; font-size:14px; max-width:280px; }
+
+  /* top bar controls, laid out for landscape */
+  #topbar {
+    position:absolute; top:0; left:0; right:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+    background:linear-gradient(to bottom, rgba(0,0,0,.55), transparent);
+  }
+  .pill {
+    display:flex; background:rgba(255,255,255,.12); border-radius:999px; padding:3px; gap:3px;
+  }
+  .pill button {
+    border:none; background:transparent; color:#bbb; font-size:12px; font-weight:700; padding:7px 14px; border-radius:999px; cursor:pointer;
+  }
+  .pill button.sel { background:#fff; color:#111; }
+  #exitBtn { border:none; background:rgba(255,255,255,.12); color:#fff; font-size:12px; font-weight:700; padding:7px 12px; border-radius:999px; cursor:pointer; }
+
+  #torchToggleWrap { display:flex; align-items:center; gap:8px; }
+  #torchToggle {
+    border:none; padding:7px 14px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer;
+    background:rgba(255,255,255,.12); color:#bbb;
+  }
+  #torchToggle.on { background:#facc15; color:#111; }
+  #torchUnsupported { font-size:10px; color:#ff8a8a; display:none; }
+
+  /* bottom bar: latency slider + shutter */
+  #bottombar {
+    position:absolute; left:0; right:0; bottom:0; z-index:20; display:flex; align-items:center; gap:16px;
+    padding: 14px max(18px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    background:linear-gradient(to top, rgba(0,0,0,.6), transparent);
+  }
+  #latencyBox { flex:1; min-width:0; }
+  #latencyBox label { font-size:10px; color:#9aa0a6; display:flex; justify-content:space-between; margin-bottom:4px; }
+  #latencyBox label b { color:#fff; }
+  #latencyBox input[type=range] { width:100%; accent-color:#3b82f6; }
+  #shutter {
+    width:68px; height:68px; border-radius:50%; border:4px solid #fff; background:rgba(255,255,255,.15);
+    flex:0 0 auto; cursor:pointer; position:relative;
+  }
+  #shutter:active { background:rgba(255,255,255,.4); }
+  #shutter.busy { opacity:.5; pointer-events:none; }
+
+  /* flash pulse overlay */
+  #flashOverlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:40; transition:opacity .08s linear; }
+  #flashOverlay.firing { opacity:.9; }
+
+  /* processing toast */
+  #processingToast {
+    position:fixed; left:50%; top:16px; transform:translate(-50%,-140%); z-index:45;
+    background:rgba(20,20,24,.92); border:1px solid rgba(255,255,255,.15); border-radius:12px;
+    padding:8px 16px; font-size:12px; display:flex; align-items:center; gap:8px; transition:transform .2s ease;
+  }
+  #processingToast.show { transform:translate(-50%,0); }
+  .spinner { width:12px; height:12px; border-radius:50%; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* gallery drawer */
+  #galleryHandle {
+    position:absolute; right:10px; bottom:92px; z-index:25; background:rgba(255,255,255,.14); color:#fff;
+    border:none; border-radius:10px; padding:8px 10px; font-size:11px; font-weight:700; cursor:pointer;
+  }
+  #galleryHandle b { display:block; font-size:14px; }
+  #gallery {
+    position:fixed; right:0; top:0; bottom:0; width:min(84vw, 360px); z-index:60; background:#111216;
+    border-left:1px solid rgba(255,255,255,.1); transform:translateX(100%); transition:transform .22s ease;
+    display:flex; flex-direction:column;
+  }
+  #gallery.open { transform:translateX(0); }
+  #galleryHead { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); }
+  #galleryHead h2 { font-size:13px; margin:0; }
+  #galleryHead button { border:none; background:rgba(255,255,255,.1); color:#fff; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  #galleryList { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  .shot { display:flex; gap:10px; background:#1a1b20; border-radius:10px; padding:8px; align-items:center; }
+  .shot img { width:72px; height:54px; object-fit:cover; border-radius:6px; background:#000; flex:0 0 auto; }
+  .shot .meta { font-size:11px; line-height:1.5; color:#c6c9cf; min-width:0; }
+  .shot .meta .mode { font-weight:800; font-size:11px; }
+  .shot .meta .mode.torch { color:#facc15; }
+  .shot .meta .mode.flash { color:#60a5fa; }
+  .shot .meta .b { color:#fff; font-weight:700; }
+  #galleryEmpty { color:#777; font-size:12px; text-align:center; margin-top:30px; }
+
+  /* live shot counter, always visible while shooting */
+  #shotCounter {
+    position:absolute; left:50%; top:max(10px, env(safe-area-inset-top)); transform:translateX(-50%); z-index:21;
+    background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.18); border-radius:999px;
+    padding:5px 12px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px;
+  }
+  #shotCounter .dot { width:7px; height:7px; border-radius:50%; background:#ff4d4d; }
+  #shotCounter b { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Review screen ---------- */
+  #review { position:fixed; inset:0; display:none; background:#0b0b0e; z-index:70; flex-direction:column; }
+  #review.active { display:flex; }
+  #reviewHead {
+    display:flex; align-items:center; justify-content:space-between; padding:16px 18px;
+    border-bottom:1px solid rgba(255,255,255,.08); flex:0 0 auto;
+  }
+  #reviewHead h1 { font-size:16px; margin:0; }
+  #reviewHead span { font-size:12px; color:#9aa0a6; }
+  #reviewGrid {
+    flex:1; overflow-y:auto; padding:14px; display:grid; gap:12px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+  .rcard { background:#1a1b20; border-radius:10px; overflow:hidden; }
+  .rcard img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#000; }
+  .rcard .rmeta { padding:8px 9px; font-size:11px; line-height:1.5; color:#c6c9cf; }
+  .rcard .rmeta .mode { font-weight:800; }
+  .rcard .rmeta .mode.torch { color:#facc15; }
+  .rcard .rmeta .mode.flash { color:#60a5fa; }
+  .rcard .rmeta .b { color:#fff; font-weight:700; }
+  #reviewEmpty { color:#777; font-size:13px; text-align:center; margin-top:60px; grid-column:1/-1; }
+  #reviewFoot {
+    flex:0 0 auto; display:flex; gap:10px; padding:14px 18px max(14px, env(safe-area-inset-bottom));
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  #reviewFoot button {
+    flex:1; padding:13px; border-radius:12px; border:none; font-size:14px; font-weight:700; cursor:pointer;
+  }
+  #downloadZipBtn { background:#3b82f6; color:#fff; }
+  #downloadZipBtn:disabled { opacity:.5; }
+  #restartBtn { background:rgba(255,255,255,.12); color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- Portrait landing -->
+<div id="landing">
+  <h1>Flash vs Torch Test</h1>
+  <p>Compares a persistent-torch capture against a flash-pulse capture (torch fired on right before the shot, off right after), with a manual processing-latency slider and measured brightness per shot.</p>
+  <button class="big-btn" id="goLandscapeBtn">Go Landscape &amp; Open Camera</button>
+  <p id="capErr"></p>
+</div>
+
+<!-- Landscape camera stage -->
+<div id="stage">
+  <video id="video" autoplay playsinline muted></video>
+
+  <div id="topbar">
+    <div class="pill" id="modePill">
+      <button id="modeTorchBtn" class="sel">Torch</button>
+      <button id="modeFlashBtn">Flash</button>
+    </div>
+    <div id="torchToggleWrap">
+      <span id="torchUnsupported">no torch on this device/browser</span>
+      <button id="torchToggle">Torch Off</button>
+    </div>
+    <button id="exitBtn">Stop</button>
+  </div>
+
+  <div id="shotCounter"><span class="dot"></span>Shots: <b id="shotCounterVal">0</b></div>
+
+  <button id="galleryHandle"><b id="galleryCount">0</b>shots</button>
+
+  <div id="bottombar">
+    <div id="latencyBox">
+      <label>Processing delay <b id="latencyVal">300 ms</b></label>
+      <input type="range" id="latencySlider" min="0" max="2000" step="50" value="300">
+    </div>
+    <button id="shutter" aria-label="Capture"></button>
+  </div>
+
+  <div id="rotatePrompt">
+    <div class="icon">&#128241;&#8635;</div>
+    <p>This browser can't force landscape automatically. Please rotate your phone to landscape to continue.</p>
+  </div>
+</div>
+
+<div id="flashOverlay"></div>
+<div id="processingToast"><span class="spinner"></span><span id="processingLabel">Processing… 300 ms</span></div>
+
+<div id="gallery">
+  <div id="galleryHead">
+    <h2>Captures</h2>
+    <button id="galleryClose">Close</button>
+  </div>
+  <div id="galleryList">
+    <div id="galleryEmpty">No captures yet</div>
+  </div>
+</div>
+
+<canvas id="workCanvas" style="display:none"></canvas>
+
+<!-- Review screen: shown after Stop -->
+<div id="review">
+  <div id="reviewHead">
+    <h1>Review</h1>
+    <span id="reviewCount">0 shots</span>
+  </div>
+  <div id="reviewGrid">
+    <div id="reviewEmpty">No captures this session</div>
+  </div>
+  <div id="reviewFoot">
+    <button id="downloadZipBtn">Download All (ZIP)</button>
+    <button id="restartBtn">Restart</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  const $ = (id) => document.getElementById(id);
+  const landing = $('landing'), stage = $('stage'), video = $('video');
+  const goLandscapeBtn = $('goLandscapeBtn'), capErr = $('capErr');
+  const rotatePrompt = $('rotatePrompt');
+  const modeTorchBtn = $('modeTorchBtn'), modeFlashBtn = $('modeFlashBtn');
+  const torchToggle = $('torchToggle'), torchUnsupported = $('torchUnsupported');
+  const exitBtn = $('exitBtn');
+  const latencySlider = $('latencySlider'), latencyVal = $('latencyVal');
+  const shutter = $('shutter');
+  const flashOverlay = $('flashOverlay');
+  const processingToast = $('processingToast'), processingLabel = $('processingLabel');
+  const galleryHandle = $('galleryHandle'), galleryCount = $('galleryCount');
+  const gallery = $('gallery'), galleryClose = $('galleryClose'), galleryList = $('galleryList'), galleryEmpty = $('galleryEmpty');
+  const workCanvas = $('workCanvas');
+  const shotCounterVal = $('shotCounterVal');
+  const review = $('review'), reviewGrid = $('reviewGrid'), reviewEmpty = $('reviewEmpty'), reviewCount = $('reviewCount');
+  const downloadZipBtn = $('downloadZipBtn'), restartBtn = $('restartBtn');
+
+  let stream = null, track = null, torchCapable = false, torchOn = false;
+  let mode = 'torch'; // 'torch' | 'flash'
+  let shots = [];
+
+  // ---------------- camera + landscape entry ----------------
+  goLandscapeBtn.addEventListener('click', async () => {
+    capErr.style.display = 'none';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+    } catch (e) {
+      capErr.textContent = 'Camera access failed: ' + (e && e.message ? e.message : e);
+      capErr.style.display = 'block';
+      return;
+    }
+    video.srcObject = stream;
+    track = stream.getVideoTracks()[0];
+
+    landing.style.display = 'none';
+    stage.classList.add('active');
+
+    // fullscreen (best-effort, ignored if blocked)
+    try {
+      if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else if (document.documentElement.webkitRequestFullscreen) document.documentElement.webkitRequestFullscreen();
+    } catch (e) { /* non-fatal */ }
+
+    // real landscape lock (Android Chrome etc.) — iOS Safari has no orientation.lock support,
+    // so it falls back to the manual rotate prompt below.
+    let locked = false;
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock('landscape');
+        locked = true;
+      }
+    } catch (e) { locked = false; }
+
+    if (!locked) {
+      checkOrientation();
+      window.addEventListener('resize', checkOrientation);
+      window.addEventListener('orientationchange', checkOrientation);
+    }
+
+    // torch capability
+    try {
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      torchCapable = !!caps.torch;
+    } catch (e) { torchCapable = false; }
+    torchUnsupported.style.display = torchCapable ? 'none' : 'block';
+    torchToggle.disabled = !torchCapable;
+  });
+
+  function checkOrientation() {
+    const landscape = window.innerWidth > window.innerHeight;
+    rotatePrompt.classList.toggle('show', !landscape);
+  }
+
+  exitBtn.addEventListener('click', stopSession);
+  function stopSession() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(e){}
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
+    stage.classList.remove('active');
+    gallery.classList.remove('open');
+    window.removeEventListener('resize', checkOrientation);
+    window.removeEventListener('orientationchange', checkOrientation);
+    openReview();
+  }
+
+  // ---------------- mode switch ----------------
+  modeTorchBtn.addEventListener('click', () => setMode('torch'));
+  modeFlashBtn.addEventListener('click', () => setMode('flash'));
+  function setMode(m) {
+    mode = m;
+    modeTorchBtn.classList.toggle('sel', m === 'torch');
+    modeFlashBtn.classList.toggle('sel', m === 'flash');
+    // flash mode manages its own pulse per shot — force any persistent torch off when switching to it
+    if (m === 'flash' && torchOn) setTorch(false);
+    torchToggle.style.display = (m === 'torch') ? 'inline-block' : 'none';
+  }
+
+  // ---------------- persistent torch toggle (Torch mode only) ----------------
+  torchToggle.addEventListener('click', () => setTorch(!torchOn));
+  async function setTorch(on) {
+    if (!torchCapable || !track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: on }] });
+      torchOn = on;
+      torchToggle.textContent = on ? 'Torch On' : 'Torch Off';
+      torchToggle.classList.toggle('on', on);
+    } catch (e) { /* ignore, leave state as-is */ }
+  }
+
+  // ---------------- latency slider ----------------
+  latencySlider.addEventListener('input', () => {
+    latencyVal.textContent = latencySlider.value + ' ms';
+  });
+
+  // ---------------- gallery drawer ----------------
+  galleryHandle.addEventListener('click', () => gallery.classList.add('open'));
+  galleryClose.addEventListener('click', () => gallery.classList.remove('open'));
+
+  // ---------------- brightness measurement (mean luma, same weighting used all session: .299R+.587G+.114B) ----------------
+  function measureBrightness(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let sum = 0, n = w * h;
+    for (let i = 0; i < data.length; i += 4) {
+      sum += 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+    }
+    return sum / n;
+  }
+
+  function grabFrame() {
+    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    // downscale for fast brightness read + small thumbnail, longer side maxed at 480
+    const scale = Math.min(1, 480 / Math.max(vw, vh));
+    const w = Math.max(1, Math.round(vw * scale)), h = Math.max(1, Math.round(vh * scale));
+    workCanvas.width = w; workCanvas.height = h;
+    const ctx = workCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, w, h);
+    const brightness = measureBrightness(ctx, w, h);
+    const dataUrl = workCanvas.toDataURL('image/jpeg', 0.82);
+    return { dataUrl, brightness };
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ---------------- shutter ----------------
+  shutter.addEventListener('click', onShutter);
+  async function onShutter() {
+    if (shutter.classList.contains('busy')) return;
+    shutter.classList.add('busy');
+    const latencyMs = parseInt(latencySlider.value, 10) || 0;
+    const usedMode = mode;
+
+    try {
+      if (usedMode === 'flash') {
+        // pulse: on immediately before capture, off immediately after — independent of processing delay
+        await setTorch(true);
+        flashOverlay.classList.add('firing');
+        await sleep(120); // brief settle so exposure/metering can react before the frame grab
+        const result = grabFrame();
+        await setTorch(false);
+        flashOverlay.classList.remove('firing');
+        await runProcessingDelay(latencyMs);
+        addShot(usedMode, result, latencyMs);
+      } else {
+        // torch mode: whatever persistent torch state is already set, just capture
+        const result = grabFrame();
+        await runProcessingDelay(latencyMs);
+        addShot(usedMode, result, latencyMs);
+      }
+    } finally {
+      shutter.classList.remove('busy');
+    }
+  }
+
+  async function runProcessingDelay(ms) {
+    processingLabel.textContent = 'Processing… ' + ms + ' ms';
+    processingToast.classList.add('show');
+    await sleep(ms);
+    processingToast.classList.remove('show');
+  }
+
+  function addShot(usedMode, result, latencyMs) {
+    const shot = {
+      mode: usedMode,
+      brightness: result.brightness,
+      dataUrl: result.dataUrl,
+      latencyMs,
+      ts: new Date().toLocaleTimeString()
+    };
+    shots.unshift(shot);
+    galleryCount.textContent = shots.length;
+    shotCounterVal.textContent = shots.length;
+    renderGallery();
+  }
+
+  function renderGallery() {
+    if (!shots.length) {
+      galleryList.innerHTML = '';
+      galleryList.appendChild(galleryEmpty);
+      return;
+    }
+    galleryList.innerHTML = shots.map(s => `
+      <div class="shot">
+        <img src="${s.dataUrl}" alt="">
+        <div class="meta">
+          <div class="mode ${s.mode}">${s.mode.toUpperCase()}</div>
+          <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
+          <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ---------------- review screen ----------------
+  function openReview() {
+    landing.style.display = 'none';
+    review.classList.add('active');
+    reviewCount.textContent = shots.length + (shots.length === 1 ? ' shot' : ' shots');
+    downloadZipBtn.disabled = shots.length === 0;
+    if (!shots.length) {
+      reviewGrid.innerHTML = '';
+      reviewGrid.appendChild(reviewEmpty);
+      return;
+    }
+    reviewGrid.innerHTML = shots.map((s, i) => `
+      <div class="rcard">
+        <img src="${s.dataUrl}" alt="">
+        <div class="rmeta">
+          <div class="mode ${s.mode}">${s.mode.toUpperCase()} #${shots.length - i}</div>
+          <div>Brightness: <span class="b">${s.brightness.toFixed(1)}</span></div>
+          <div>Delay: ${s.latencyMs} ms &middot; ${s.ts}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  downloadZipBtn.addEventListener('click', async () => {
+    if (!shots.length || typeof JSZip === 'undefined') return;
+    downloadZipBtn.disabled = true;
+    const origLabel = downloadZipBtn.textContent;
+    downloadZipBtn.textContent = 'Zipping…';
+    try {
+      const zip = new JSZip();
+      const manifestLines = ['index,mode,brightness,delay_ms,time'];
+      shots.slice().reverse().forEach((s, idx) => {
+        const n = idx + 1;
+        const base64 = s.dataUrl.split(',')[1];
+        zip.file(`shot_${String(n).padStart(3,'0')}_${s.mode}.jpg`, base64, { base64: true });
+        manifestLines.push(`${n},${s.mode},${s.brightness.toFixed(2)},${s.latencyMs},${s.ts}`);
+      });
+      zip.file('manifest.csv', manifestLines.join('\n'));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'flash_vs_torch_' + Date.now() + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      downloadZipBtn.disabled = shots.length === 0;
+      downloadZipBtn.textContent = origLabel;
+    }
+  });
+
+  restartBtn.addEventListener('click', () => {
+    shots = [];
+    galleryCount.textContent = '0';
+    shotCounterVal.textContent = '0';
+    renderGallery();
+    review.classList.remove('active');
+    landing.style.display = 'flex';
+  });
+
+  // initial mode UI
+  setMode('torch');
+})();
+</script>
+</body>
+</html>
