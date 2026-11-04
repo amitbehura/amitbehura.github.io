@@ -180,8 +180,8 @@
 
   <div id="topbar">
     <div class="pill" id="modePill">
-      <button id="modeTorchBtn" class="sel">Torch</button>
-      <button id="modeFlashBtn">Flash</button>
+      <button id="modeFlashBtn" class="sel">Flash</button>
+      <button id="modeTorchBtn">Torch</button>
     </div>
     <div id="torchToggleWrap">
       <span id="torchUnsupported">no torch on this device/browser</span>
@@ -375,28 +375,44 @@
   torchToggle.addEventListener('click', () => setTorch(!torchOn));
   async function setTorch(on) {
     if (!torchCapable || !track) return;
-    // Try the standard constraint shape first; some Android Chrome builds only honor the
-    // flat (non-"advanced") shape. Previously a failure here was silently swallowed, so a
-    // torch that wasn't actually engaging gave no signal at all — now we retry and, if both
-    // fail, show the real error instead of leaving the toggle looking inert.
+    // IMPORTANT: constraints inside "advanced: [...]" are spec'd as best-effort — if the
+    // device/browser can't actually satisfy `torch`, applyConstraints is allowed to silently
+    // no-op and still resolve successfully (no error thrown). That's exactly the bug we saw:
+    // "no error came and no torch was on." So we try the FLAT (non-advanced) shape FIRST,
+    // since that one is treated as a real constraint and should reject if unsupported — the
+    // advanced shape is now only a fallback for browsers that reject the flat form outright.
     let ok = false, lastErr = null;
     try {
-      await track.applyConstraints({ advanced: [{ torch: on }] });
+      await track.applyConstraints({ torch: on });
       ok = true;
     } catch (e) { lastErr = e; }
     if (!ok) {
       try {
-        await track.applyConstraints({ torch: on });
+        await track.applyConstraints({ advanced: [{ torch: on }] });
         ok = true;
       } catch (e) { lastErr = e; }
     }
+    // Best-effort verification: if the browser reports actual torch state back via
+    // getSettings(), confirm it actually matches what we asked for — catches the silent
+    // no-op case where the promise resolved but the hardware never changed state.
+    let confirmedOn = null;
+    try {
+      if (track.getSettings) {
+        const s = track.getSettings();
+        if (typeof s.torch === 'boolean') confirmedOn = s.torch;
+      }
+    } catch (e) { /* getSettings().torch not reported, can't verify */ }
+    if (ok && confirmedOn !== null && confirmedOn !== on) ok = false;
+
     if (ok) {
       torchOn = on;
       torchToggle.textContent = on ? 'Torch On' : 'Torch Off';
       torchToggle.classList.toggle('on', on);
       torchUnsupported.style.display = 'none';
     } else {
-      torchUnsupported.textContent = 'torch failed: ' + (lastErr && lastErr.message ? lastErr.message : lastErr);
+      torchUnsupported.textContent = lastErr
+        ? 'torch failed: ' + (lastErr.message || lastErr)
+        : 'torch call succeeded but device reports it did not actually turn ' + (on ? 'on' : 'off');
       torchUnsupported.style.display = 'block';
     }
   }
@@ -591,7 +607,7 @@
   });
 
   // initial mode UI
-  setMode('torch');
+  setMode('flash');
 })();
 </script>
 </body>
