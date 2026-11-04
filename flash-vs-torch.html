@@ -486,6 +486,13 @@
     ctx.drawImage(video, 0, 0, w, h);
     const brightness = measureBrightness(ctx, w, h);
     const dataUrl = workCanvas.toDataURL('image/jpeg', 0.82);
+
+    // Also grab the same instant at full native resolution for real processing below —
+    // drawn here, synchronously with the thumbnail, so processing runs on the actual
+    // captured frame rather than a later live-video redraw (which could be post-torch-off).
+    procCanvas.width = vw; procCanvas.height = vh;
+    procCanvas.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, vw, vh);
+
     return { dataUrl, brightness };
   }
 
@@ -498,9 +505,12 @@
   // real, measurable work on the actual pixels so processing time is an output, not a slider.
   function processFrame() {
     const t0 = performance.now();
-    const w = workCanvas.width, h = workCanvas.height;
-    procCanvas.width = w; procCanvas.height = h;
-    const srcCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+    // Process at full native camera resolution (procCanvas, populated by grabFrame at the
+    // same instant as the thumbnail) rather than the downscaled 480px thumbnail — this is
+    // what makes the cost realistic rather than token: a real on-device pipeline runs on
+    // the full frame, not a preview-sized copy.
+    const w = procCanvas.width, h = procCanvas.height;
+    const srcCtx = procCanvas.getContext('2d', { willReadFrequently: true });
     const { data } = srcCtx.getImageData(0, 0, w, h);
 
     // grayscale
