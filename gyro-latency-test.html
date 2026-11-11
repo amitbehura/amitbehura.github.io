@@ -125,6 +125,26 @@
     <div class="row"><span class="label">total samples</span><span class="val" id="count">0</span></div>
     <div class="row"><span class="label">frozen streak</span><span class="val" id="freeze-streak">0</span></div>
   </div>
+
+  <div class="card">
+    <div class="section-title">Accuracy / Drift Test</div>
+    <div class="sub-note" style="margin-bottom:10px;">
+      Lay the phone flat next to a fixed angle reference (tape marks, a book edge, a wall corner).
+      Tap Zero while still, then either (a) leave it untouched to measure stationary drift, or
+      (b) rotate it to a known angle (e.g. 90°) and compare the integrated reading below to that known value.
+    </div>
+    <button class="primary" id="zero-btn" style="width:100%; margin:0 0 12px;">Zero</button>
+    <div class="row"><span class="label">elapsed since zero</span><span class="val" id="drift-elapsed">—</span></div>
+    <div class="row"><span class="label">integrated alpha</span><span class="val" id="drift-alpha">—</span></div>
+    <div class="row"><span class="label">integrated beta</span><span class="val" id="drift-beta">—</span></div>
+    <div class="row"><span class="label">integrated gamma</span><span class="val" id="drift-gamma">—</span></div>
+    <div class="row"><span class="label">drift rate (beta)</span><span class="val" id="drift-rate-beta">—</span></div>
+    <div class="row"><span class="label">drift rate (gamma)</span><span class="val" id="drift-rate-gamma">—</span></div>
+    <div class="section-title" style="margin-top:14px;">OS-fused orientation (reference, resists drift)</div>
+    <div class="row"><span class="label">beta (tilt fwd/back)</span><span class="val" id="os-beta">—</span></div>
+    <div class="row"><span class="label">gamma (tilt left/right)</span><span class="val" id="os-gamma">—</span></div>
+    <div class="sub-note">If the gap between "integrated" and "OS-fused" grows while the phone sits still, that gap is gyro drift.</div>
+  </div>
 </div>
 
 <script>
@@ -145,6 +165,14 @@ const el = {
   statusPill: document.getElementById('status-pill'),
   statusText: document.getElementById('status-text'),
   statusSub: document.getElementById('status-sub'),
+  driftElapsed: document.getElementById('drift-elapsed'),
+  driftAlpha: document.getElementById('drift-alpha'),
+  driftBeta: document.getElementById('drift-beta'),
+  driftGamma: document.getElementById('drift-gamma'),
+  driftRateBeta: document.getElementById('drift-rate-beta'),
+  driftRateGamma: document.getElementById('drift-rate-gamma'),
+  osBeta: document.getElementById('os-beta'),
+  osGamma: document.getElementById('os-gamma'),
 };
 
 function fmt(n, unit) {
@@ -171,6 +199,12 @@ let freezeStreak = 0;
 let maxFreezeStreak = 0;
 let watchdogTimer = null;
 const STALL_MS = 500; // no events at all for this long = flag dead
+
+// --- accuracy / drift state ---
+let driftActive = false;
+let driftStartTs = null;
+let integTs = null; // last timestamp used for integration (separate from jitter's lastTs)
+const accAngle = { alpha: 0, beta: 0, gamma: 0 };
 
 function pushInterval(dt) {
   intervals.push(dt);
@@ -281,6 +315,34 @@ function handleMotion(e) {
   const x = Math.max(-1, Math.min(1, gamma / 180)) * maxOffset;
   const y = Math.max(-1, Math.min(1, beta / 180)) * maxOffset;
   tiltDot.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+
+  // --- accuracy / drift integration (angle = integral of rate over time) ---
+  if (driftActive) {
+    if (integTs !== null) {
+      const dtSec = (now - integTs) / 1000;
+      accAngle.alpha += (rr.alpha || 0) * dtSec;
+      accAngle.beta += (rr.beta || 0) * dtSec;
+      accAngle.gamma += (rr.gamma || 0) * dtSec;
+    }
+    integTs = now;
+
+    const elapsedSec = (now - driftStartTs) / 1000;
+    el.driftElapsed.textContent = elapsedSec.toFixed(0) + 's';
+    el.driftAlpha.textContent = fmt(accAngle.alpha, '°');
+    el.driftBeta.textContent = fmt(accAngle.beta, '°');
+    el.driftGamma.textContent = fmt(accAngle.gamma, '°');
+
+    if (elapsedSec >= 5) {
+      const elapsedMin = elapsedSec / 60;
+      el.driftRateBeta.textContent = fmt(accAngle.beta / elapsedMin, '°/min');
+      el.driftRateGamma.textContent = fmt(accAngle.gamma / elapsedMin, '°/min');
+    }
+  }
+}
+
+function handleOrientationFused(e) {
+  el.osBeta.textContent = fmt(e.beta, '°');
+  el.osGamma.textContent = fmt(e.gamma, '°');
 }
 
 async function requestMotionPermission() {
@@ -294,7 +356,32 @@ async function requestMotionPermission() {
   }
   window.addEventListener('devicemotion', handleMotion);
   armWatchdog();
+
+  // OS-fused orientation, used only as a drift reference — failure here
+  // shouldn't block the core gyro benchmark above.
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      await DeviceOrientationEvent.requestPermission();
+    }
+    if ('DeviceOrientationEvent' in window) {
+      window.addEventListener('deviceorientation', handleOrientationFused);
+    }
+  } catch (e) {
+    // reference signal unavailable; core benchmark still works
+  }
 }
+
+document.getElementById('zero-btn').addEventListener('click', () => {
+  accAngle.alpha = 0;
+  accAngle.beta = 0;
+  accAngle.gamma = 0;
+  integTs = null;
+  driftStartTs = performance.now();
+  driftActive = true;
+  el.driftRateBeta.textContent = '—';
+  el.driftRateGamma.textContent = '—';
+});
 
 document.getElementById('start-btn').addEventListener('click', async () => {
   statusMsg.textContent = '';
