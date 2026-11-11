@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Gyro Latency Test</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: #0b0b0f; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #start-screen {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 24px; text-align: center;
+    background: #0b0b0f;
+  }
+  #start-screen h1 { font-size: 20px; margin: 0 0 4px; }
+  #start-screen p { font-size: 14px; color: #a9afc3; margin: 0; max-width: 340px; line-height: 1.5; }
+  button.primary {
+    appearance: none; border: none; border-radius: 12px;
+    background: #4c8bf5; color: #fff; font-size: 16px; font-weight: 600;
+    padding: 14px 28px; margin-top: 8px;
+  }
+  button.primary:active { background: #3a6fd0; }
+  #status-msg { font-size: 13px; color: #ff6b6b; min-height: 18px; }
+
+  #dashboard { display: none; padding: 16px; padding-bottom: 48px; max-width: 480px; margin: 0 auto; }
+
+  .device-label {
+    width: 100%; background: transparent; border: none; border-bottom: 1px solid #333a52;
+    color: #fff; font-size: 18px; font-weight: 700; padding: 6px 2px; margin-bottom: 16px;
+    text-align: center;
+  }
+  .device-label::placeholder { color: #555c78; }
+
+  .card {
+    background: #15151c; border: 1px solid #262633; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .section-title { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #6b7290; margin-bottom: 10px; }
+
+  .big-metric { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .big-metric .num { font-size: 34px; font-weight: 700; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  .big-metric .unit { font-size: 14px; color: #8d94ad; }
+  .sub-note { font-size: 12px; color: #6b7290; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .status-pill.ok { background: rgba(76,245,161,0.12); color: #4cf5a1; }
+  .status-pill.warn { background: rgba(255,184,76,0.12); color: #ffb84c; }
+  .status-pill.dead { background: rgba(255,107,107,0.12); color: #ff6b6b; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px; }
+  .label { color: #8d94ad; }
+  .val { font-family: "SF Mono", Menlo, Consolas, monospace; min-width: 70px; text-align: right; }
+
+  .tilt-box {
+    position: relative; width: 100%; height: 110px; margin-top: 10px;
+    border: 1px solid #262633; border-radius: 10px; overflow: hidden; background: #0f0f15;
+  }
+  .crosshair { position: absolute; top: 50%; left: 50%; width: 1px; height: 100%; background: #222330; transform: translateX(-50%); }
+  .crosshair.h { width: 100%; height: 1px; transform: translateY(-50%); }
+  .tilt-dot {
+    position: absolute; top: 50%; left: 50%; width: 14px; height: 14px;
+    border-radius: 50%; background: #4cf5a1; box-shadow: 0 0 10px #4cf5a1;
+    transform: translate(-50%, -50%);
+  }
+
+  .sparkline { width: 100%; height: 48px; display: block; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>Gyro Latency Test</h1>
+  <p>Measures how fast and how consistently this device's gyroscope reports motion: sample rate, jitter, and whether it's frozen. Open this same page on each phone and compare the numbers side by side while you move them.</p>
+  <button class="primary" id="start-btn">Enable Motion Sensors</button>
+  <div id="status-msg"></div>
+</div>
+
+<div id="dashboard">
+  <input type="text" id="device-label" class="device-label" placeholder="Label this device (e.g. Pixel 7)">
+
+  <div class="card">
+    <div class="section-title">Status</div>
+    <div class="status-pill ok" id="status-pill"><span class="dot"></span><span id="status-text">Waiting for data…</span></div>
+    <div class="sub-note" id="status-sub">—</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Sample Rate</div>
+    <div class="big-metric"><span class="num" id="hz-val">—</span><span class="unit">Hz (rolling avg)</span></div>
+    <div class="sub-note" id="hz-sub">Interval between gyro events</div>
+    <canvas class="sparkline" id="hz-spark"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Jitter</div>
+    <div class="big-metric"><span class="num" id="jitter-val">—</span><span class="unit">ms (std dev)</span></div>
+    <div class="sub-note">Lower = more consistent delivery. Spikes here often precede a stall.</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Gyroscope — rotation rate (°/s)</div>
+    <div class="row"><span class="label">alpha (z-axis)</span><span class="val" id="alpha">—</span></div>
+    <div class="row"><span class="label">beta (x-axis)</span><span class="val" id="beta">—</span></div>
+    <div class="row"><span class="label">gamma (y-axis)</span><span class="val" id="gamma">—</span></div>
+    <div class="tilt-box">
+      <div class="crosshair"></div>
+      <div class="crosshair h"></div>
+      <div class="tilt-dot" id="tilt-dot"></div>
+    </div>
+    <div class="sub-note">Dot deflects while rotating and snaps back to center when still — flick the phone and watch for lag/drift by eye.</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Raw counters</div>
+    <div class="row"><span class="label">total samples</span><span class="val" id="count">0</span></div>
+    <div class="row"><span class="label">frozen streak</span><span class="val" id="freeze-streak">0</span></div>
+  </div>
+</div>
+
+<script>
+const startScreen = document.getElementById('start-screen');
+const statusMsg = document.getElementById('status-msg');
+const dashboard = document.getElementById('dashboard');
+const tiltDot = document.getElementById('tilt-dot');
+
+const el = {
+  alpha: document.getElementById('alpha'),
+  beta: document.getElementById('beta'),
+  gamma: document.getElementById('gamma'),
+  hz: document.getElementById('hz-val'),
+  hzSub: document.getElementById('hz-sub'),
+  jitter: document.getElementById('jitter-val'),
+  count: document.getElementById('count'),
+  freezeStreak: document.getElementById('freeze-streak'),
+  statusPill: document.getElementById('status-pill'),
+  statusText: document.getElementById('status-text'),
+  statusSub: document.getElementById('status-sub'),
+};
+
+function fmt(n, unit) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  return n.toFixed(1) + (unit || '');
+}
+
+// --- device label persistence (per-browser only, not synced) ---
+const labelInput = document.getElementById('device-label');
+try {
+  labelInput.value = localStorage.getItem('gyro-test-label') || '';
+} catch (e) {}
+labelInput.addEventListener('input', () => {
+  try { localStorage.setItem('gyro-test-label', labelInput.value); } catch (e) {}
+});
+
+// --- rolling state ---
+const WINDOW_SIZE = 30;
+let lastTs = null;
+let intervals = []; // ms between samples, rolling window
+let sampleCount = 0;
+let lastValues = null;
+let freezeStreak = 0;
+let maxFreezeStreak = 0;
+let watchdogTimer = null;
+const STALL_MS = 500; // no events at all for this long = flag dead
+
+function pushInterval(dt) {
+  intervals.push(dt);
+  if (intervals.length > WINDOW_SIZE) intervals.shift();
+}
+
+function mean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+function stdDev(arr) {
+  const m = mean(arr);
+  return Math.sqrt(mean(arr.map(x => (x - m) ** 2)));
+}
+
+// sparkline of instantaneous Hz over recent samples
+const sparkCanvas = document.getElementById('hz-spark');
+const sparkCtx = sparkCanvas.getContext('2d');
+let sparkHistory = [];
+const SPARK_MAX = 60;
+
+function drawSpark() {
+  const w = sparkCanvas.clientWidth || 300;
+  const h = sparkCanvas.clientHeight || 48;
+  sparkCanvas.width = w * devicePixelRatio;
+  sparkCanvas.height = h * devicePixelRatio;
+  sparkCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  sparkCtx.clearRect(0, 0, w, h);
+  if (sparkHistory.length < 2) return;
+  const maxV = Math.max(...sparkHistory, 1);
+  sparkCtx.beginPath();
+  sparkCtx.strokeStyle = '#4c8bf5';
+  sparkCtx.lineWidth = 2;
+  sparkHistory.forEach((v, i) => {
+    const x = (i / (SPARK_MAX - 1)) * w;
+    const y = h - (v / maxV) * (h - 4) - 2;
+    if (i === 0) sparkCtx.moveTo(x, y); else sparkCtx.lineTo(x, y);
+  });
+  sparkCtx.stroke();
+}
+
+function setStatus(kind, text, sub) {
+  el.statusPill.className = 'status-pill ' + kind;
+  el.statusText.textContent = text;
+  el.statusSub.textContent = sub;
+}
+
+function armWatchdog() {
+  if (watchdogTimer) clearTimeout(watchdogTimer);
+  watchdogTimer = setTimeout(() => {
+    setStatus('dead', 'No gyro events', `Nothing received for ${STALL_MS}ms+. Sensor may be dead or page backgrounded.`);
+  }, STALL_MS);
+}
+
+function handleMotion(e) {
+  const rr = e.rotationRate;
+  if (!rr || (rr.alpha === null && rr.beta === null && rr.gamma === null)) return;
+
+  const now = performance.now();
+  sampleCount++;
+  el.count.textContent = sampleCount;
+
+  if (lastTs !== null) {
+    const dt = now - lastTs;
+    pushInterval(dt);
+    const instHz = dt > 0 ? 1000 / dt : 0;
+    sparkHistory.push(instHz);
+    if (sparkHistory.length > SPARK_MAX) sparkHistory.shift();
+  }
+  lastTs = now;
+  armWatchdog();
+
+  if (intervals.length >= 3) {
+    const avgInterval = mean(intervals);
+    const hz = avgInterval > 0 ? 1000 / avgInterval : 0;
+    el.hz.textContent = hz.toFixed(0);
+    el.jitter.textContent = stdDev(intervals).toFixed(1);
+
+    if (hz < 10) {
+      setStatus('dead', 'Too slow to be usable', 'Effective rate below 10Hz — treat as non-functional.');
+    } else if (hz < 30) {
+      setStatus('warn', 'Slow', `~${hz.toFixed(0)}Hz — noticeably laggy for motion-based features.`);
+    } else {
+      setStatus('ok', 'Healthy', `~${hz.toFixed(0)}Hz, jitter ${stdDev(intervals).toFixed(1)}ms.`);
+    }
+  }
+  drawSpark();
+
+  // frozen-value detector
+  const cur = { a: rr.alpha, b: rr.beta, g: rr.gamma };
+  if (lastValues &&
+      cur.a === lastValues.a && cur.b === lastValues.b && cur.g === lastValues.g) {
+    freezeStreak++;
+  } else {
+    freezeStreak = 0;
+  }
+  lastValues = cur;
+  maxFreezeStreak = Math.max(maxFreezeStreak, freezeStreak);
+  el.freezeStreak.textContent = freezeStreak;
+  if (freezeStreak >= 10) {
+    setStatus('dead', 'Frozen values', `Last ${freezeStreak} samples identical — gyro is reporting but not updating.`);
+  }
+
+  el.alpha.textContent = fmt(rr.alpha, '°/s');
+  el.beta.textContent = fmt(rr.beta, '°/s');
+  el.gamma.textContent = fmt(rr.gamma, '°/s');
+
+  const beta = rr.beta || 0;
+  const gamma = rr.gamma || 0;
+  const maxOffset = 45;
+  const x = Math.max(-1, Math.min(1, gamma / 180)) * maxOffset;
+  const y = Math.max(-1, Math.min(1, beta / 180)) * maxOffset;
+  tiltDot.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+}
+
+async function requestMotionPermission() {
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    const result = await DeviceMotionEvent.requestPermission();
+    if (result !== 'granted') throw new Error('Motion permission denied');
+  }
+  if (!('DeviceMotionEvent' in window)) {
+    throw new Error('DeviceMotionEvent not supported on this browser');
+  }
+  window.addEventListener('devicemotion', handleMotion);
+  armWatchdog();
+}
+
+document.getElementById('start-btn').addEventListener('click', async () => {
+  statusMsg.textContent = '';
+  try {
+    await requestMotionPermission();
+  } catch (err) {
+    statusMsg.textContent = 'Motion sensors unavailable: ' + err.message;
+    return;
+  }
+  startScreen.style.display = 'none';
+  dashboard.style.display = 'block';
+});
+
+window.addEventListener('resize', drawSpark);
+</script>
+
+</body>
+</html>
