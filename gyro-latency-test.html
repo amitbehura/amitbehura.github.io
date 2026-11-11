@@ -145,6 +145,21 @@
     <div class="row"><span class="label">gamma (tilt left/right)</span><span class="val" id="os-gamma">—</span></div>
     <div class="sub-note">If the gap between "integrated" and "OS-fused" grows while the phone sits still, that gap is gyro drift.</div>
   </div>
+
+  <div class="card">
+    <div class="section-title">Walkaround Heading (production algorithm replica)</div>
+    <div class="sub-note" style="margin-bottom:10px;">
+      Faithful port of the heading estimator used in the car-inspection walkaround flow — same tilt-compensated
+      compass math, same gating rules, same 5° snapping, run against this device's real sensor data.
+      Hold the phone the way you would during an inspection, tap Calibrate facing your starting point, then
+      physically turn to 90°/180°/270° and compare to what's shown.
+    </div>
+    <button class="primary" id="calibrate-btn" style="width:100%; margin:0 0 12px;">Calibrate (zero here)</button>
+    <div class="status-pill ok" id="heading-status-pill"><span class="dot"></span><span id="heading-status-text">Not calibrated</span></div>
+    <div class="row" style="margin-top:8px;"><span class="label">heading (snapped, 5°)</span><span class="val" id="heading-val">—</span></div>
+    <div class="row"><span class="label">heading (raw, unsnapped)</span><span class="val" id="heading-raw">—</span></div>
+    <div class="sub-note">"Invalid" means the production algorithm itself would reject this reading (phone held too flat, or tilt crossed outside its expected range) — not a code bug, that's how it behaves live.</div>
+  </div>
 </div>
 
 <script>
@@ -173,6 +188,10 @@ const el = {
   driftRateGamma: document.getElementById('drift-rate-gamma'),
   osBeta: document.getElementById('os-beta'),
   osGamma: document.getElementById('os-gamma'),
+  headingStatusPill: document.getElementById('heading-status-pill'),
+  headingStatusText: document.getElementById('heading-status-text'),
+  headingVal: document.getElementById('heading-val'),
+  headingRaw: document.getElementById('heading-raw'),
 };
 
 function fmt(n, unit) {
@@ -205,6 +224,65 @@ let driftActive = false;
 let driftStartTs = null;
 let integTs = null; // last timestamp used for integration (separate from jitter's lastTs)
 const accAngle = { alpha: 0, beta: 0, gamma: 0 };
+
+// --- walkaround heading estimator: faithful port of production nK class ---
+// (same tilt-compensated heading math, same gating thresholds, same 5° snap)
+class WalkaroundHeading {
+  constructor() {
+    this.betaStartVal = null;
+    this.gammaStartVal = null;
+    this.compassStartingOffset = null;
+    this.betaThresh = 90;
+    this.gammaThresh = 20;
+    this.angleStep = 5;
+  }
+  trimAngle(e) {
+    e = Math.floor(e);
+    const t = e, n = this.angleStep;
+    e = Math.ceil(t / n) * n;
+    if (e < 0) e += 360;
+    if (e >= 360) e -= 360;
+    return e;
+  }
+  // e = target start angle offset, t = direction ("Left" or not) — production calls this
+  // with the walkaround's configured starting target; we default to 0 / non-Left, i.e.
+  // "zero out to wherever you're facing when you calibrate".
+  getAngleOfFrame(orientationEvent, e = 0, t = 'Right') {
+    const n = orientationEvent.alpha, r = orientationEvent.beta, a = orientationEvent.gamma;
+    if (n === null || r === null || a === null) return { value: -1, raw: null };
+
+    if (this.betaStartVal === null) this.betaStartVal = r;
+    if (this.gammaStartVal === null) this.gammaStartVal = a;
+
+    if (Math.abs(a) < this.gammaThresh) return { value: -1, raw: null };
+    if (a / this.gammaStartVal < 0 && Math.abs(r - this.betaStartVal) < this.betaThresh) return { value: -1, raw: null };
+    if (a / this.gammaStartVal > 0 && Math.abs(r - this.betaStartVal) > this.betaThresh) return { value: -1, raw: null };
+
+    const i = n * (Math.PI / 180), s = r * (Math.PI / 180), o = a * (Math.PI / 180);
+    const c = Math.cos(i), l = Math.sin(i);
+    const u = Math.sin(s); // production discards cos(beta) here too (dead term in source)
+    const d = Math.cos(o), h = Math.sin(o);
+    const p = -c * h - l * u * d;
+    const f = -l * h + c * u * d;
+    let g = Math.atan(p / f);
+    if (f < 0) g += Math.PI; else if (p < 0) g += 2 * Math.PI;
+    g *= 180 / Math.PI;
+    let m = g;
+
+    if (m === null || Number.isNaN(m) || m === -1) return { value: -1, raw: null };
+
+    if (this.compassStartingOffset === null) {
+      this.compassStartingOffset = m;
+      this.compassStartingOffset -= t === 'Left' ? 360 - e : e;
+    }
+    const raw = m;
+    m -= this.compassStartingOffset;
+    m = this.trimAngle(m);
+    return { value: m, raw };
+  }
+}
+const walkaroundHeading = new WalkaroundHeading();
+let headingCalibrated = false;
 
 function pushInterval(dt) {
   intervals.push(dt);
@@ -343,6 +421,20 @@ function handleMotion(e) {
 function handleOrientationFused(e) {
   el.osBeta.textContent = fmt(e.beta, '°');
   el.osGamma.textContent = fmt(e.gamma, '°');
+
+  if (!headingCalibrated) return;
+  const result = walkaroundHeading.getAngleOfFrame(e);
+  if (result.value === -1) {
+    el.headingStatusPill.className = 'status-pill warn';
+    el.headingStatusText.textContent = 'Invalid (phone outside expected tilt range)';
+    el.headingVal.textContent = '—';
+    el.headingRaw.textContent = '—';
+  } else {
+    el.headingStatusPill.className = 'status-pill ok';
+    el.headingStatusText.textContent = 'Tracking';
+    el.headingVal.textContent = fmt(result.value, '°');
+    el.headingRaw.textContent = fmt(result.raw, '°');
+  }
 }
 
 async function requestMotionPermission() {
@@ -381,6 +473,15 @@ document.getElementById('zero-btn').addEventListener('click', () => {
   driftActive = true;
   el.driftRateBeta.textContent = '—';
   el.driftRateGamma.textContent = '—';
+});
+
+document.getElementById('calibrate-btn').addEventListener('click', () => {
+  walkaroundHeading.betaStartVal = null;
+  walkaroundHeading.gammaStartVal = null;
+  walkaroundHeading.compassStartingOffset = null;
+  headingCalibrated = true;
+  el.headingStatusPill.className = 'status-pill ok';
+  el.headingStatusText.textContent = 'Calibrated — hold steady';
 });
 
 document.getElementById('start-btn').addEventListener('click', async () => {
